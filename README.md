@@ -1,1 +1,0 @@
-# ITPM Inventory POS System 
