@@ -4,10 +4,15 @@ import React from 'react'
 const forgotpassword = () => {
   return (
     <View>
-      <Text>forgotpassword</Text>
+      <Text style={styles.title}>Forgot password</Text>
     </View>
   )
 }
-const styles = StyleSheet.create({})
+const styles = StyleSheet.create({
+    title: {
+        fontSize: 27,
+    }
+
+})
 
 export default forgotpassword

@@ -27,7 +27,7 @@ export default function LoginScreen() {
         >
           <View style={styles.card}>
             
-            {/* Top Yellow Banner */}
+            
             <View style={styles.banner}>
               <Image
                 source={require('@/assets/images/logo.png')}
@@ -66,7 +66,8 @@ export default function LoginScreen() {
               </View>
 
               {/* Forgot Password */}
-              <Pressable style={styles.forgotContainer}>
+              <Pressable style={styles.forgotContainer}
+              onPress={() => navigation.navigate('forgotpassword')}>
                 <Text style={styles.forgotText}>Forgot Password</Text>
               </Pressable>
 
