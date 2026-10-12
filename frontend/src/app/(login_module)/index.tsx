@@ -47,7 +47,7 @@ export default function LoginScreen() {
                 <Text style={styles.label}>Email</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter your email"
+                  placeholder="andrew@gmail.com"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="none"
                   keyboardType="email-address"
