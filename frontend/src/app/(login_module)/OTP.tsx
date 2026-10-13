@@ -183,7 +183,6 @@ export default function EmailVerificationScreen() {
                       style={[
                         styles.codeInput,
                         isCurrent && styles.codeInputFocused,
-                        digit ? styles.codeInputFilled : null,
                       ]}
                     />
                   );
@@ -268,16 +267,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 26,
     color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
-    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 9,
-    
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
     color: '#6B7280',
     textAlign: 'center',
     marginBottom: 28,
@@ -290,6 +288,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     width: '100%',
+    paddingBottom: 10,
   },
   codeInput: {
     flex: 1,
@@ -304,24 +303,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+
+  
   },
   codeInputFocused: {
     borderColor: '#FFC72C',
-    backgroundColor: '#FFFDF9',
     transform: [{ scale: 1.04 }],
   },
-  codeInputFilled: {
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FAFAFA',
-  },
+ 
   bottomSection: {
     width: '100%',
-    paddingTop: 12,
+    paddingTop: 100,
   },
   SendCodeButton: {
     width: 210,

@@ -101,13 +101,13 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight: 100,
+    minHeight: 820,
     maxWidth: 500,
     backgroundColor: '#fffdf5', // Soft warm cream background
   },
   banner: {
     backgroundColor: '#f6b800', // Yellow banner
-    paddingTop: 1000,
+    paddingTop: 100,
     paddingBottom: 50,
     paddingHorizontal: 24,
     alignItems: 'center',
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   loginButton: {
+    margin: 50,
     height: 48,
     backgroundColor: '#e60000', // Vibrant red button
     borderRadius: 12,

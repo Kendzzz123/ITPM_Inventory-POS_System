@@ -61,7 +61,6 @@ export default function LoginScreen() {
                   keyboardType="email-address"
                 />
               </View>
-
               {/* Red Log In Button */}
               <Pressable 
                 style={({ pressed }) => [
@@ -73,7 +72,9 @@ export default function LoginScreen() {
                 <Text style={styles.SendCode}
                >Send code</Text>
               </Pressable>
-            </View>
+</View>
+              
+            
 
           </View>
         </ScrollView>
@@ -138,7 +139,7 @@ const styles = StyleSheet.create({
   formContainer: {
     paddingHorizontal: 36,
     paddingTop: 30,
-    paddingBottom: 40,
+ 
   },
   title: {
     paddingTop: 30,
@@ -187,6 +188,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   SendCodeButton: {
+    margin: 50,
     height: 48,
     backgroundColor: '#e60000', // Vibrant red button
     borderRadius: 12,
@@ -198,6 +200,8 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   SendCode: {
+    justifyContent: 'center',
+    alignItems: 'center',
     fontFamily: 'Poppins_700Bold',
     color: '#ffffff',
     fontSize: 16,

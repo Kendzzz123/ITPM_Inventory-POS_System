@@ -32,7 +32,7 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-            <Pressable onPress={() => router.replace('/')}>
+            <Pressable onPress={() => router.replace('/OTP')}>
   <MaterialIcons name="chevron-left" size={50} color="black" />
 </Pressable>
             <View style={styles.new}>
