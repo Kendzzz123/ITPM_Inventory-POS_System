@@ -19,7 +19,7 @@ export default function LoginScreen() {
     
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.screen}
+     
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView 
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   banner: {
     backgroundColor: '#f6b800', // Yellow banner
-    paddingTop: 60,
+    paddingTop: 1000,
     paddingBottom: 50,
     paddingHorizontal: 24,
     alignItems: 'center',
