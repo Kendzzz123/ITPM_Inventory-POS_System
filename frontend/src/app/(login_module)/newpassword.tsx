@@ -76,9 +76,10 @@ export default function LoginScreen() {
                   styles.SendCodeButton,
                   pressed && styles.SendCodeButtonPressed
                 ]}
+                onPress={() => router.replace('/')}
               >
                 <Text style={styles.SendCode}
-                onPress={() => navigation.navigate('/')}>Confirm</Text>
+                >Confirm</Text>
               </Pressable>
             </View>
 

@@ -68,9 +68,10 @@ export default function LoginScreen() {
                   styles.SendCodeButton,
                   pressed && styles.SendCodeButtonPressed
                 ]}
+                 onPress={() => router.push('/OTP')}
               >
                 <Text style={styles.SendCode}
-                onPress={() => navigation.navigate('OTP')}>Send code</Text>
+               >Send code</Text>
               </Pressable>
             </View>
 
@@ -92,7 +93,6 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     borderWidth: 2,
     borderColor: '#000',
-    backgroundColor: '#fff', // Or 'transparent'
     justifyContent: 'center',
     alignItems: 'center',
   },

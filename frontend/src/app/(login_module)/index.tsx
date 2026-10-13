@@ -11,9 +11,12 @@ import {
   TouchableWithoutFeedback,
   Keyboard 
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
+  const router = useRouter();
   return (
+    
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.screen}
@@ -67,7 +70,7 @@ export default function LoginScreen() {
 
               {/* Forgot Password */}
               <Pressable style={styles.forgotContainer}
-              onPress={() => navigation.navigate('forgotpassword')}>
+              onPress={() => router.push('/forgotpassword')}>
                 <Text style={styles.forgotText}>Forgot Password</Text>
               </Pressable>
 
@@ -90,10 +93,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#e5e7eb', // subtle backdrop for desktop/web viewing
-  },
+  
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -101,13 +101,13 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight:820,
-    maxWidth: 420,
+    minHeight: 100,
+    maxWidth: 500,
     backgroundColor: '#fffdf5', // Soft warm cream background
   },
   banner: {
     backgroundColor: '#f6b800', // Yellow banner
-    paddingTop: 100,
+    paddingTop: 60,
     paddingBottom: 50,
     paddingHorizontal: 24,
     alignItems: 'center',
