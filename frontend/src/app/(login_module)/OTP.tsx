@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   Pressable, 
   KeyboardAvoidingView,
@@ -12,25 +11,34 @@ import {
   Keyboard,
   ActivityIndicator,
   StatusBar,
+  Alert,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import axios from 'axios';
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
 
+// Replace YOUR_PC_IP with your computer's local Wi-Fi IPv4 address
+const YOUR_PC_IP = '192.168.1.36';
+const API_URL = Platform.select({
+  web: 'http://localhost:3000',
+  default: `http://${YOUR_PC_IP}:3000`,
+});
+
 export default function EmailVerificationScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ email?: string }>();
-  const emailDisplay = params.email || 'juandelacruz@gmail.com';
+  const emailDisplay = params.email || '';
 
   const [code, setCode] = useState<string[]>(new Array(CODE_LENGTH).fill(''));
   const [focusedIndex, setFocusedIndex] = useState<number | null>(0);
   const [timer, setTimer] = useState<number>(RESEND_COOLDOWN);
   const [canResend, setCanResend] = useState<boolean>(false);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [isResending, setIsResending] = useState<boolean>(false);
 
   const inputsRef = useRef<Array<TextInput | null>>([]);
 
@@ -96,36 +104,55 @@ export default function EmailVerificationScreen() {
     const fullCode = verificationCode || code.join('');
     if (fullCode.length !== CODE_LENGTH || isVerifying) return;
 
+    if (!emailDisplay) {
+      Alert.alert('Error', 'Missing email address. Please start from the beginning.');
+      router.replace('/forgotpassword');
+      return;
+    }
+
     Keyboard.dismiss();
     setIsVerifying(true);
 
     try {
-      setTimeout(() => {
-        setIsVerifying(false);
-        router.push('/newpassword');
-      }, 800);
-    } catch {
+      await axios.post(`${API_URL}/auth/verify-otp`, {
+        email: emailDisplay,
+        otp: fullCode,
+      });
+
+      // Navigate to new password screen with email and verified code
+      router.push({
+        pathname: '/newpassword',
+        params: { email: emailDisplay, otp: fullCode },
+      });
+    } catch (error: any) {
+      console.error('Verify OTP Error:', error.response?.data || error.message);
+      const message = error.response?.data?.message || 'Invalid or expired code';
+      Alert.alert('Verification Failed', message);
+    } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleResend = () => {
-    if (!canResend) return;
-    setTimer(RESEND_COOLDOWN);
-    setCanResend(false);
-    setCode(new Array(CODE_LENGTH).fill(''));
-    inputsRef.current[0]?.focus();
-  };
+  const handleResend = async () => {
+    if (!canResend || isResending || !emailDisplay) return;
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/forgotpassword');
+    setIsResending(true);
+    try {
+      await axios.post(`${API_URL}/auth/forgot-password`, {
+        email: emailDisplay,
+      });
+
+      Alert.alert('Sent', 'A new 6-digit code has been sent to your email.');
+      setTimer(RESEND_COOLDOWN);
+      setCanResend(false);
+      setCode(new Array(CODE_LENGTH).fill(''));
+      inputsRef.current[0]?.focus();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to resend code');
+    } finally {
+      setIsResending(false);
     }
   };
-
-  const isComplete = code.join('').length === CODE_LENGTH;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -137,78 +164,87 @@ export default function EmailVerificationScreen() {
           style={styles.keyboardContainer}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          
-      <View style={styles.card}>
-          {/* Native Mobile App Header */}
-          <MaterialIcons style={styles.usogkaonti} name="chevron-left" size={50} color="#111827"
-              onPress={() => navigation.navigate('forgotpassword')} />
-          {/* Main Mobile Screen Flow */}
-          <View style={styles.screenContent}>
-            
-            {/* Top Anchor: Icon & Instruction */}
-            <View style={styles.topSection}>
-              
-              <View style={styles.iconCircle}>
-                
-                <MaterialIcons name="mail" size={38} color="#EA0000" />
-              </View>
+          <View style={styles.card}>
+            {/* Header Back Button */}
+            <MaterialIcons 
+              style={styles.usogkaonti} 
+              name="chevron-left" 
+              size={50} 
+              color="#111827"
+              onPress={() => router.replace('/forgotpassword')} 
+            />
 
-              <Text style={styles.title}>Check your email</Text>
-              <Text style={styles.subtitle}>
-                We sent a 6-digit confirmation code to 
-                <Text style={styles.emailText}> {emailDisplay}</Text>
-              </Text>
+            <View style={styles.screenContent}>
+              <View style={styles.topSection}>
+                <View style={styles.iconCircle}>
+                  <MaterialIcons name="mail" size={32} color="#EA0000" />
+                </View>
 
-              {/* OTP Cells */}
-              <View style={styles.codeRow}>
-                {code.map((digit, index) => {
-                  const isCurrent = focusedIndex === index;
-                  return (
-                    <TextInput
-                      key={index}
-                      ref={(ref) => {
-                        inputsRef.current[index] = ref;
-                      }}
-                      value={digit}
-                      onChangeText={(val) => handleChangeText(val, index)}
-                      onKeyPress={(e) => handleKeyPress(e, index)}
-                      onFocus={() => setFocusedIndex(index)}
-                      onBlur={() => setFocusedIndex(null)}
-                      keyboardType="number-pad"
-                      textContentType="oneTimeCode"
-                      autoComplete="one-time-code"
-                      maxLength={1}
-                      selectTextOnFocus
-                      caretHidden
-                      style={[
-                        styles.codeInput,
-                        isCurrent && styles.codeInputFocused,
-                      ]}
-                    />
-                  );
-                })}
-                
+                <Text style={styles.title}>Check your email</Text>
+                <Text style={styles.subtitle}>
+                  We sent a 6-digit confirmation code to 
+                  <Text style={styles.emailText}> {emailDisplay || 'your email'}</Text>
+                </Text>
+
+                {/* OTP Cells */}
+                <View style={styles.codeRow}>
+                  {code.map((digit, index) => {
+                    const isCurrent = focusedIndex === index;
+                    return (
+                      <TextInput
+                        key={index}
+                        ref={(ref) => {
+                          inputsRef.current[index] = ref;
+                        }}
+                        value={digit}
+                        onChangeText={(val) => handleChangeText(val, index)}
+                        onKeyPress={(e) => handleKeyPress(e, index)}
+                        onFocus={() => setFocusedIndex(index)}
+                        onBlur={() => setFocusedIndex(null)}
+                        keyboardType="number-pad"
+                        textContentType="oneTimeCode"
+                        autoComplete="one-time-code"
+                        maxLength={1}
+                        selectTextOnFocus
+                        caretHidden
+                        editable={!isVerifying}
+                        style={[
+                          styles.codeInput,
+                          isCurrent && styles.codeInputFocused,
+                        ]}
+                      />
+                    );
+                  })}
+                </View>
+
+                {/* Resend Cooldown */}
+                <View style={styles.resendContainer}>
+                  <Text style={styles.resendPrompt}>Didn't receive the code? </Text>
+                  <Pressable onPress={handleResend} disabled={!canResend || isResending}>
+                    <Text style={[styles.resendText, !canResend && styles.resendTextDisabled]}>
+                      {canResend ? 'Resend' : `Resend in ${timer}s`}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Verify Button */}
+                <Pressable 
+                  style={({ pressed }) => [
+                    styles.SendCodeButton,
+                    pressed && styles.SendCodeButtonPressed
+                  ]}
+                  onPress={() => verifyCode()}
+                  disabled={isVerifying}
+                >
+                  {isVerifying ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.SendCode}>Verify code</Text>
+                  )}
+                </Pressable>
               </View>
-              <Pressable 
-                            style={({ pressed }) => [
-                              styles.SendCodeButton,
-                              pressed && styles.SendCodeButtonPressed
-                            ]}
-                             onPress={() => router.replace('/newpassword')}
-                          >
-                            <Text style={styles.SendCode}
-                           >Verify code</Text>
-                          </Pressable>
             </View>
-
-            {/* Bottom Section: Primary Action & Cooldown pinned to thumb reach */}
-                            
-                  
-                
-                
-              </View>
-              </View>
-            
+          </View>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
     </SafeAreaView>
@@ -218,12 +254,12 @@ export default function EmailVerificationScreen() {
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    minHeight:820,
+    minHeight: 820,
     maxWidth: 420,
-    backgroundColor: '#fffdf5', // Soft warm cream background
+    backgroundColor: '#fffcef',
   },
   usogkaonti: {
-    paddingLeft: 5
+    paddingLeft: 15,
   },
   safeArea: {
     flexGrow: 1,
@@ -232,18 +268,6 @@ const styles = StyleSheet.create({
   },
   keyboardContainer: {
     flex: 1,
-  },
-  appHeader: {
-    height: 48,
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 38,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   screenContent: {
     flex: 1,
@@ -256,15 +280,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   iconCircle: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
     borderRadius: 40,
     borderWidth: 1.5,
     borderColor: 'black',
-    
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 40,
+    marginTop: 20,
   },
   title: {
     fontFamily: 'Poppins_700Bold',
@@ -274,7 +298,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Poppins_400Regular',
     color: '#6B7280',
     textAlign: 'center',
@@ -303,26 +327,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-
-  
   },
   codeInputFocused: {
-    borderColor: '#FFC72C',
+    borderColor: '#e60000',
     transform: [{ scale: 1.04 }],
-  },
- 
-  bottomSection: {
-    width: '100%',
-    paddingTop: 100,
   },
   SendCodeButton: {
     width: 210,
-    height: 40,
-    backgroundColor: '#e60000', // Vibrant red button
+    height: 48,
+    backgroundColor: '#e60000',
     borderRadius: 15.2,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 28,
   },
   SendCodeButtonPressed: {
     opacity: 0.85,
