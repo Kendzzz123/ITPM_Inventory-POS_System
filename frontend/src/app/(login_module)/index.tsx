@@ -45,6 +45,7 @@ export default function LoginScreen() {
 
       console.log('Login success:', response.data);
       Alert.alert('Success', `Welcome, ${response.data.user.name}!`);
+      router.push('/dashboard module/dashboard');
 
       // Route based on role
       // router.replace('/dashboard');
