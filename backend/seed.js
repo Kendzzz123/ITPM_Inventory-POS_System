@@ -7,7 +7,7 @@ async function seed() {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'myapp_db',
+    database: process.env.DB_NAME || 'pos_sample',
   });
 
   try {

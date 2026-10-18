@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-const YOUR_PC_IP = '192.168.1.36';
+import { saveToken } from './Role';
+const YOUR_PC_IP = '192.168.1.23';
 // When running on Web / iOS simulator use localhost; on Android emulator use 10.0.2.2
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
@@ -44,11 +45,9 @@ export default function LoginScreen() {
       });
 
       console.log('Login success:', response.data);
-      Alert.alert('Success', `Welcome, ${response.data.user.name}!`);
-      router.push('/dashboard module/dashboard');
+      await saveToken(response.data.token);   // <-- add this
+      router.replace('/dashboard module/dashboard');
 
-      // Route based on role
-      // router.replace('/dashboard');
     } catch (error: any) {
       console.error('Login error:', error.response?.data || error.message);
       const message = error.response?.data?.message || 'Failed to connect to server';
