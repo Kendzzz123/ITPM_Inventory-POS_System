@@ -17,7 +17,7 @@ import {
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { saveToken } from './Role';
-const YOUR_PC_IP = '192.168.1.23';
+const YOUR_PC_IP = '192.168.1.36';
 // When running on Web / iOS simulator use localhost; on Android emulator use 10.0.2.2
 const API_URL = Platform.select({
   web: 'http://localhost:3000',

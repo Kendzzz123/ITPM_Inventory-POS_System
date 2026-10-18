@@ -12,7 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 
 // ---- API config (same pattern as your login screen) ----
-const YOUR_PC_IP = '192.168.1.23';
+const YOUR_PC_IP = '192.168.1.36';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,

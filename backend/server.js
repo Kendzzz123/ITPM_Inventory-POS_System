@@ -20,7 +20,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 1. Database Connection Pool
+// // 1. Database Connection Pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
@@ -321,5 +321,79 @@ app.listen(PORT, '0.0.0.0', async () => {
     connection.release();
   } catch (err) {
     console.error('Initial DB connection error:', err.message);
+  }
+});
+
+// GET /protected/dashboard-report
+// Requires your JWT verification middleware// GET /protected/dashboard-report
+app.get('/protected/dashboard-report', authenticateToken, async (req, res) => {
+  try {
+    // 1. Top 4 sold items for today
+    let [salesRows] = await pool.query(`
+      SELECT 
+        m.Item_Name AS label,
+        CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS value
+      FROM Order_Details od
+      JOIN Menu_Items m ON od.Item_ID = m.Item_ID
+      JOIN Orders o ON od.Order_ID = o.Order_ID
+      WHERE DATE(o.Order_Date_Time) = CURDATE()
+      GROUP BY m.Item_ID, m.Item_Name
+      ORDER BY value DESC
+      LIMIT 4
+    `);
+
+    // Fallback: If no orders were made today, fetch top items overall
+    if (!salesRows || salesRows.length === 0) {
+      const [allTimeSales] = await pool.query(`
+        SELECT 
+          m.Item_Name AS label,
+          CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS value
+        FROM Order_Details od
+        JOIN Menu_Items m ON od.Item_ID = m.Item_ID
+        GROUP BY m.Item_ID, m.Item_Name
+        ORDER BY value DESC
+        LIMIT 4
+      `);
+      salesRows = allTimeSales;
+    }
+
+    // 2. Total items sold today
+    const [totalRows] = await pool.query(`
+      SELECT 
+        CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS total_items
+      FROM Order_Details od
+      JOIN Orders o ON od.Order_ID = o.Order_ID
+      WHERE DATE(o.Order_Date_Time) = CURDATE()
+    `);
+
+    // 3. Recent 3 transactions
+    const [transactionRows] = await pool.query(`
+      SELECT 
+        o.Order_ID AS id,
+        DATE_FORMAT(o.Order_Date_Time, '%d/%m/%Y') AS date,
+        DATE_FORMAT(o.Order_Date_Time, '%H:%i') AS time,
+        'Cash' AS method,
+        COALESCE(
+          (SELECT m.Item_Name 
+           FROM Order_Details od 
+           JOIN Menu_Items m ON od.Item_ID = m.Item_ID 
+           WHERE od.Order_ID = o.Order_ID 
+           LIMIT 1), 
+          'Order'
+        ) AS product,
+        CAST(o.Total_Amount AS CHAR) AS amount
+      FROM Orders o
+      ORDER BY o.Order_Date_Time DESC
+      LIMIT 3
+    `);
+
+    return res.json({
+      salesData: salesRows,
+      totalSold: totalRows[0]?.total_items || 0,
+      transactions: transactionRows,
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard report:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });

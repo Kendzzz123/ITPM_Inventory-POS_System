@@ -22,7 +22,7 @@ const CODE_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
 
 // Replace YOUR_PC_IP with your computer's local Wi-Fi IPv4 address
-const YOUR_PC_IP = '192.168.1.23';
+const YOUR_PC_IP = '192.168.1.36';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,

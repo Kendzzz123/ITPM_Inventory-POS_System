@@ -18,7 +18,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 
 // Change YOUR_PC_IP to your local IPv4 address if testing on a physical phone
-const YOUR_PC_IP = '192.168.1.23';
+const YOUR_PC_IP = '192.168.1.36';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
