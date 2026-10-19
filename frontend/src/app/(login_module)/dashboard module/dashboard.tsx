@@ -168,6 +168,17 @@ export default function DashboardScreen() {
     }).start(() => setMenuVisible(false));
   };
 
+  const navigateTo = (path: string) => {
+    Animated.timing(slideAnim, {
+      toValue: DRAWER_WIDTH,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setMenuVisible(false);
+      router.push(path as any);
+    });
+  };
+
   const handleLogout = async () => {
     await clearToken();
     closeMenu();
@@ -241,7 +252,10 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity onPress={openMenu} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity
+                onPress={openMenu}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
                 <Ionicons name="menu" size={32} color="#111827" />
               </TouchableOpacity>
             </View>
@@ -303,7 +317,10 @@ export default function DashboardScreen() {
             </View>
 
             <Text style={styles.salesSubtitle}>You sold {totalSold} items this day.</Text>
-            <TouchableOpacity style={styles.seeAllBtn} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.seeAllBtn}
+              onPress={() => router.push('/dashboard module/sales-report' as any)}
+            >
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
 
@@ -393,7 +410,7 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* Side Drawer Modal matching image_da4955.png */}
+      {/* Side Drawer Modal */}
       <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
         <View style={styles.drawerOverlay}>
           <TouchableOpacity style={styles.drawerBackdrop} activeOpacity={1} onPress={closeMenu} />
@@ -415,42 +432,60 @@ export default function DashboardScreen() {
 
             {/* Menu Items List */}
             <View style={styles.drawerMenuWrapper}>
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="person-outline" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Account Information</Text>
-              </TouchableOpacity>
+              <TouchableOpacity
+  style={styles.drawerItem}
+  onPress={() => navigateTo('/dashboard module/account-info')}
+>
+  <View style={styles.drawerIconBox}>
+    <Ionicons name="person-outline" size={40} color="#ef0000" />
+  </View>
+  <Text style={styles.drawerItemText}>Account Information</Text>
+</TouchableOpacity>
 
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="notifications" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Stock Alert</Text>
-              </TouchableOpacity>
+              <TouchableOpacity
+  style={styles.drawerItem}
+  onPress={() => navigateTo('/dashboard module/stock-alert')}
+>
+  <View style={styles.drawerIconBox}>
+    <Ionicons name="notifications" size={40} color="#ef0000" />
+  </View>
+  <Text style={styles.drawerItemText}>Stock Alert</Text>
+</TouchableOpacity>
 
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
-                <View style={styles.drawerIconBox}>
-                  <MaterialCommunityIcons name="tag-multiple" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Manage Price</Text>
-              </TouchableOpacity>
+              <TouchableOpacity
+  style={styles.drawerItem}
+  onPress={() => navigateTo('/dashboard module/manage-price')}
+>
+  <View style={styles.drawerIconBox}>
+    <MaterialCommunityIcons name="tag-multiple" size={40} color="#ef0000" />
+  </View>
+  <Text style={styles.drawerItemText}>Manage Price</Text>
+</TouchableOpacity>
 
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
+              <TouchableOpacity
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/stocks')}
+              >
                 <View style={styles.drawerIconBox}>
                   <Ionicons name="eye-outline" size={42} color="#ef0000" />
                 </View>
                 <Text style={styles.drawerItemText}>Live Stock Count</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
+              <TouchableOpacity
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/record-waste')}
+              >
                 <View style={styles.drawerIconBox}>
                   <Ionicons name="document-text-outline" size={40} color="#ef0000" />
                 </View>
                 <Text style={styles.drawerItemText}>Record Waste</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
+              <TouchableOpacity
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/waste-history')}
+              >
                 <View style={styles.drawerIconBox}>
                   <Ionicons name="trash-outline" size={40} color="#ef0000" />
                 </View>
@@ -699,7 +734,7 @@ const styles = StyleSheet.create({
     color: '#262626',
     fontWeight: '500',
   },
-  /* Updated Sidebar Drawer Styles matching image_da4955.png */
+  /* Sidebar Drawer Styles */
   drawerOverlay: {
     flex: 1,
     flexDirection: 'row',

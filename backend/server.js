@@ -397,3 +397,383 @@ app.get('/protected/dashboard-report', authenticateToken, async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+// 1. GET /protected/stocks — Fetch all stock items & low-stock status
+app.get('/protected/stocks', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        Stock_ID AS id,
+        Stock_Name AS name,
+        Unit AS unit,
+        CAST(ROUND(Current_Quantity) AS SIGNED) AS quantity,
+        CAST(ROUND(Minimum_Level) AS SIGNED) AS minLevel
+      FROM Stock_Items
+      ORDER BY Stock_ID ASC
+    `);
+    const hasLowStock = rows.some((item) => item.quantity <= item.minLevel);
+    return res.json({ stocks: rows, hasLowStock });
+  } catch (error) {
+    console.error('Error fetching stocks:', error);
+    return res.status(500).json({ message: 'Failed to load stocks' });
+  }
+});
+
+// 2. POST /protected/restock — Add stock via Purchase_Orders + sp_receive_po
+app.post('/protected/restock', authenticateToken, async (req, res) => {
+  const { stockId, itemName, quantity } = req.body;
+  const userId = req.user.id || req.user.User_ID;
+  const qty = Number(quantity);
+
+  if (!qty || qty <= 0) {
+    return res.status(400).json({ message: 'Please enter a valid positive quantity.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    let targetId = stockId;
+    if (!targetId && itemName) {
+      const [found] = await conn.query(
+        `SELECT Stock_ID FROM Stock_Items WHERE Stock_Name = ? LIMIT 1`,
+        [itemName]
+      );
+      if (found.length === 0) {
+        const [ins] = await conn.query(
+          `INSERT INTO Stock_Items (Stock_Name, Unit, Current_Quantity, Minimum_Level) VALUES (?, 'pcs', 0, 10)`,
+          [itemName]
+        );
+        targetId = ins.insertId;
+      } else {
+        targetId = found[0].Stock_ID;
+      }
+    }
+
+    const [poResult] = await conn.query(`INSERT INTO Purchase_Orders (Order_Date) VALUES (NOW())`);
+    const poId = poResult.insertId;
+
+    await conn.query(
+      `INSERT INTO Purchase_Order_Items (PO_ID, Stock_ID, Quantity) VALUES (?, ?, ?)`,
+      [poId, targetId, qty]
+    );
+
+    await conn.commit();
+
+    // Execute stored procedure sp_receive_po to atomically update stock and ledger
+    await pool.query(`CALL sp_receive_po(?, ?)`, [poId, userId]);
+
+    return res.json({ message: 'Item restocked successfully!' });
+  } catch (error) {
+    await conn.rollback();
+    console.error('Error restocking item:', error);
+    return res.status(500).json({ message: error.sqlMessage || 'Failed to restock item' });
+  } finally {
+    conn.release();
+  }
+});
+
+// 3. POST /protected/waste — Record waste via sp_record_waste
+app.post('/protected/waste', authenticateToken, async (req, res) => {
+  const { stockId, itemName, quantity, reason = 'Recorded Waste', clientRequestId } = req.body;
+  const userId = req.user.id || req.user.User_ID;
+  const qty = Number(quantity);
+
+  if (!qty || qty <= 0) {
+    return res.status(400).json({ message: 'Please enter a valid positive quantity.' });
+  }
+
+  try {
+    let targetId = stockId;
+    if (!targetId && itemName) {
+      const [found] = await pool.query(
+        `SELECT Stock_ID FROM Stock_Items WHERE Stock_Name = ? LIMIT 1`,
+        [itemName]
+      );
+      if (found.length === 0) {
+        return res.status(404).json({ message: 'Stock item not found.' });
+      }
+      targetId = found[0].Stock_ID;
+    }
+
+    const reqUuid =
+      clientRequestId ||
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      });
+
+    await pool.query(`CALL sp_record_waste(?, ?, ?, ?, ?, @waste_id)`, [
+      userId,
+      reqUuid,
+      targetId,
+      qty,
+      reason,
+    ]);
+
+    return res.json({ message: 'Waste recorded successfully!' });
+  } catch (error) {
+    console.error('Error recording waste:', error);
+    return res.status(400).json({ message: error.sqlMessage || 'Failed to record waste' });
+  }
+});
+
+// 4. GET /protected/waste-history — Fetch waste log entries
+app.get('/protected/waste-history', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        w.Waste_ID AS id,
+        DATE_FORMAT(w.Date, '%m/%d/%Y') AS date,
+        s.Stock_Name AS item,
+        CAST(ROUND(w.Quantity) AS CHAR) AS quantity
+      FROM Waste_Log w
+      JOIN Stock_Items s ON w.Stock_ID = s.Stock_ID
+      ORDER BY w.Date DESC
+    `);
+    return res.json({ history: rows });
+  } catch (error) {
+    console.error('Error fetching waste history:', error);
+    return res.status(500).json({ message: 'Failed to load waste history' });
+  }
+});
+
+// 5. GET /protected/sales-report?period=Daily|Weekly|Monthly|Yearly
+app.get('/protected/sales-report', authenticateToken, async (req, res) => {
+  const period = req.query.period || 'Daily';
+  try {
+    let dateFilter = `DATE(o.Order_Date_Time) = CURDATE()`;
+    if (period === 'Weekly') {
+      dateFilter = `YEARWEEK(o.Order_Date_Time, 1) = YEARWEEK(CURDATE(), 1)`;
+    } else if (period === 'Monthly') {
+      dateFilter = `YEAR(o.Order_Date_Time) = YEAR(CURDATE()) AND MONTH(o.Order_Date_Time) = MONTH(CURDATE())`;
+    } else if (period === 'Yearly') {
+      dateFilter = `YEAR(o.Order_Date_Time) = YEAR(CURDATE())`;
+    }
+
+    let [salesRows] = await pool.query(`
+      SELECT 
+        m.Item_Name AS label,
+        CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS value
+      FROM Order_Details od
+      JOIN Menu_Items m ON od.Item_ID = m.Item_ID
+      JOIN Orders o ON od.Order_ID = o.Order_ID
+      WHERE ${dateFilter}
+      GROUP BY m.Item_ID, m.Item_Name
+      ORDER BY value DESC
+      LIMIT 4
+    `);
+
+    if (!salesRows || salesRows.length === 0) {
+      const [allTime] = await pool.query(`
+        SELECT 
+          m.Item_Name AS label,
+          CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS value
+        FROM Order_Details od
+        JOIN Menu_Items m ON od.Item_ID = m.Item_ID
+        GROUP BY m.Item_ID, m.Item_Name
+        ORDER BY value DESC
+        LIMIT 4
+      `);
+      salesRows = allTime;
+    }
+
+    return res.json({ salesData: salesRows });
+  } catch (error) {
+    console.error('Error fetching filtered sales report:', error);
+    return res.status(500).json({ message: 'Failed to load sales report' });
+  }
+});
+
+// ==========================================
+// MANAGE PRICE ENDPOINTS
+// ==========================================
+
+// GET /protected/menu-items — Fetch all active menu items and prices
+app.get('/protected/menu-items', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        Item_ID AS id,
+        Item_Name AS name,
+        CAST(ROUND(Price) AS UNSIGNED) AS price,
+        Category AS category
+      FROM Menu_Items
+      WHERE Is_Active = 1
+      ORDER BY Item_ID ASC
+    `);
+    return res.json({ items: rows });
+  } catch (error) {
+    console.error('Error fetching menu items:', error);
+    return res.status(500).json({ message: 'Failed to load menu items' });
+  }
+});
+
+// PUT /protected/menu-items/:id — Update item price
+app.put('/protected/menu-items/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { price, name } = req.body;
+  const numericPrice = Number(price);
+
+  if (!numericPrice || numericPrice <= 0) {
+    return res.status(400).json({ message: 'Price must be greater than 0.' });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `UPDATE Menu_Items SET Price = ? WHERE Item_ID = ? OR Item_Name = ?`,
+      [numericPrice, id, name || '']
+    );
+    return res.json({ message: 'Price updated successfully', affectedRows: result.affectedRows });
+  } catch (error) {
+    console.error('Error updating price:', error);
+    return res.status(500).json({ message: 'Failed to update price' });
+  }
+});
+
+// ==========================================
+// ACCOUNT & STAFF MANAGEMENT ENDPOINTS
+// ==========================================
+
+// GET /protected/account — Get logged-in user's full account info
+app.get('/protected/account', authenticateToken, async (req, res) => {
+  const userId = req.user.id || req.user.User_ID;
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        User_ID AS id,
+        Name AS name,
+        Username AS username,
+        Role AS role,
+        Status AS status,
+        COALESCE(Email, '') AS email,
+        COALESCE(Phone, '') AS phone,
+        DATE_FORMAT(Employment_Date, '%M %e, %Y') AS formattedDate,
+        DATE_FORMAT(Employment_Date, '%m/%d/%Y') AS slashDate
+      FROM Users
+      WHERE User_ID = ? LIMIT 1`,
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    return res.json({ account: rows[0] });
+  } catch (error) {
+    console.error('Error fetching account:', error);
+    return res.status(500).json({ message: 'Failed to load account info' });
+  }
+});
+
+// GET /protected/staff — List all staff members
+app.get('/protected/staff', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        User_ID AS id,
+        Name AS name,
+        Username AS username,
+        Role AS role,
+        Status AS status,
+        COALESCE(Email, '') AS email,
+        COALESCE(Phone, '') AS phone,
+        DATE_FORMAT(Employment_Date, '%m/%d/%Y') AS employmentDate
+      FROM Users
+      WHERE Role = 'cashier' OR User_ID > 1
+      ORDER BY User_ID ASC
+    `);
+    return res.json({ staff: rows });
+  } catch (error) {
+    console.error('Error fetching staff:', error);
+    return res.status(500).json({ message: 'Failed to load staff list' });
+  }
+});
+
+// POST /protected/staff — Create a new staff member
+app.post('/protected/staff', authenticateToken, async (req, res) => {
+  const { name, phone, email, password, employmentDate } = req.body;
+  if (!name || !password) {
+    return res.status(400).json({ message: 'Name and password are required.' });
+  }
+
+  try {
+    const cleanUsername =
+      name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 18) +
+      Math.floor(10 + Math.random() * 90);
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Parse mm/dd/yyyy to yyyy-mm-dd
+    let sqlDate = new Date().toISOString().split('T')[0];
+    if (employmentDate && employmentDate.includes('/')) {
+      const parts = employmentDate.split('/');
+      if (parts.length === 3) {
+        sqlDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+      }
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO Users (Name, Username, Password_Hash, Role, Status, Email, Phone, Employment_Date)
+       VALUES (?, ?, ?, 'cashier', 'active', ?, ?, ?)`,
+      [name.trim(), cleanUsername, passwordHash, email?.trim() || null, phone?.trim() || null, sqlDate]
+    );
+
+    return res.json({ message: 'Staff created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Error creating staff:', error);
+    return res.status(400).json({ message: error.sqlMessage || 'Failed to create staff' });
+  }
+});
+
+// PUT /protected/staff/:id — Edit staff or own profile
+app.put('/protected/staff/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name, phone, email, employmentDate } = req.body;
+
+  try {
+    let sqlDate = null;
+    if (employmentDate && employmentDate.includes('/')) {
+      const parts = employmentDate.split('/');
+      if (parts.length === 3) {
+        sqlDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+      }
+    }
+
+    await pool.query(
+      `UPDATE Users 
+       SET Name = COALESCE(?, Name),
+           Phone = COALESCE(?, Phone),
+           Email = COALESCE(?, Email),
+           Employment_Date = COALESCE(?, Employment_Date)
+       WHERE User_ID = ?`,
+      [name?.trim() || null, phone?.trim() || null, email?.trim() || null, sqlDate, id]
+    );
+
+    return res.json({ message: 'Updated successfully' });
+  } catch (error) {
+    console.error('Error updating staff:', error);
+    return res.status(400).json({ message: error.sqlMessage || 'Failed to update details' });
+  }
+});
+
+// PATCH /protected/staff/:id/suspend — Suspend or reactivate staff
+app.patch('/protected/staff/:id/suspend', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { status = 'suspended' } = req.body;
+  try {
+    await pool.query(`UPDATE Users SET Status = ? WHERE User_ID = ?`, [status, id]);
+    return res.json({ message: `Staff status updated to ${status}` });
+  } catch (error) {
+    console.error('Error suspending staff:', error);
+    return res.status(500).json({ message: 'Failed to suspend staff' });
+  }
+});
+
+// DELETE /protected/staff/:id — Remove staff if no orders exist, otherwise suspend
+app.delete('/protected/staff/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(`DELETE FROM Users WHERE User_ID = ?`, [id]);
+    return res.json({ message: 'Staff deleted' });
+  } catch (error) {
+    // Foreign key guard fallback: suspend if user has historical orders
+    await pool.query(`UPDATE Users SET Status = 'suspended' WHERE User_ID = ?`, [id]);
+    return res.json({ message: 'Staff has historical records and was marked suspended instead.' });
+  }
+});
