@@ -589,6 +589,10 @@ app.get('/protected/sales-report', authenticateToken, async (req, res) => {
 // MANAGE PRICE ENDPOINTS
 // ==========================================
 
+// GET /protected/menu-items — Fetch all active menu items and prices// ==========================================
+// MANAGE PRICE ENDPOINTS
+// ==========================================
+
 // GET /protected/menu-items — Fetch all active menu items and prices
 app.get('/protected/menu-items', authenticateToken, async (req, res) => {
   try {
@@ -775,5 +779,38 @@ app.delete('/protected/staff/:id', authenticateToken, async (req, res) => {
     // Foreign key guard fallback: suspend if user has historical orders
     await pool.query(`UPDATE Users SET Status = 'suspended' WHERE User_ID = ?`, [id]);
     return res.json({ message: 'Staff has historical records and was marked suspended instead.' });
+  }
+});
+
+// PATCH /protected/staff/:id/suspend — Suspend or Unsuspend staff
+app.patch('/protected/staff/:id/suspend', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // 'suspended' or 'active'
+
+  if (!['active', 'suspended'].includes(status)) {
+    return res.status(400).json({ message: 'Invalid status value.' });
+  }
+
+  try {
+    await pool.query(`UPDATE Users SET Status = ? WHERE User_ID = ?`, [status, id]);
+    return res.json({ message: `Staff status updated to ${status}`, status });
+  } catch (error) {
+    console.error('Error updating staff status:', error);
+    return res.status(500).json({ message: 'Failed to update staff status' });
+  }
+});
+
+// DELETE /protected/staff/:id — Delete staff account
+app.delete('/protected/staff/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(`DELETE FROM Users WHERE User_ID = ?`, [id]);
+    return res.json({ message: 'Staff account deleted successfully' });
+  } catch (error) {
+    // Fallback if foreign key constraints (Orders/Stock_Movements) exist
+    console.error('Delete constraint triggered:', error);
+    return res.status(400).json({
+      message: 'Cannot permanently delete staff with existing transaction records. Suspend them instead.',
+    });
   }
 });
