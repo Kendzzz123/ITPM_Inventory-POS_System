@@ -16,6 +16,14 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_400Regular_Italic,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import axios from 'axios';
 import { getToken, clearToken } from '../Role';
 
@@ -24,6 +32,16 @@ const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
 });
+
+// 4.1 Color Palette Specification
+const COLORS = {
+  yellow: '#FFC400',     // Brand yellow
+  red: '#EC0000',        // Primary buttons, links, sales chart bars, alert icons
+  cream: '#FFFDF5',      // Light cream screen background
+  drawerCream: '#FDF8EA',// Side menu surface
+  white: '#FFFFFF',      // Input fields, cards, text on red buttons
+  nearBlack: '#0F1015',  // Titles, labels, and body text
+};
 
 type Me = {
   id: number;
@@ -59,7 +77,15 @@ const computeMaxScale = (val: number): number => {
 export default function DashboardScreen() {
   const router = useRouter();
   const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
+  const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
+
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_400Regular_Italic,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+  });
 
   // Backend and User Profile State
   const [me, setMe] = useState<Me | null>(null);
@@ -73,8 +99,9 @@ export default function DashboardScreen() {
   const [totalSold, setTotalSold] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Drawer Animation and State
+  // Drawer & Logout Confirmation State
   const [menuVisible, setMenuVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
 
   const load = useCallback(async () => {
@@ -97,7 +124,15 @@ export default function DashboardScreen() {
           .catch(() => null),
       ]);
 
-      setMe(profileRes.data.user);
+      const loggedUser = profileRes.data?.user;
+
+      // Redirect cashiers to Cashier Dashboard automatically
+      if (loggedUser?.role?.toLowerCase() === 'cashier') {
+        router.replace('/dashboard module/cashier-dashboard' as any);
+        return;
+      }
+
+      setMe(loggedUser);
 
       if (reportRes && reportRes.data) {
         const fetchedSales: SalesItem[] = reportRes.data.salesData || [];
@@ -179,16 +214,16 @@ export default function DashboardScreen() {
     });
   };
 
-  const handleLogout = async () => {
+  const handleConfirmLogout = async () => {
+    setLogoutModalVisible(false);
     await clearToken();
-    closeMenu();
     router.replace('/');
   };
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#e60000" />
+        <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
@@ -222,7 +257,7 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -230,8 +265,8 @@ export default function DashboardScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#e60000']}
-            tintColor="#e60000"
+            colors={[COLORS.red]}
+            tintColor={COLORS.red}
           />
         }
       >
@@ -242,7 +277,7 @@ export default function DashboardScreen() {
             <View style={styles.header}>
               <View style={styles.profileContainer}>
                 <View style={styles.avatarCircle}>
-                  <Ionicons name="person-outline" size={36} color="#b8860b" />
+                  <Ionicons name="person-outline" size={36} color="#9e7b08" />
                 </View>
                 <View style={styles.welcomeWrapper}>
                   <Text style={styles.welcomeText}>Welcome,</Text>
@@ -256,7 +291,7 @@ export default function DashboardScreen() {
                 onPress={openMenu}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="menu" size={32} color="#111827" />
+                <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
               </TouchableOpacity>
             </View>
 
@@ -384,7 +419,7 @@ export default function DashboardScreen() {
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
 
-            {/* Action Cards (Manager/Cashier Tools) */}
+            {/* Action Cards (Manager Tools) */}
             {isManager && (
               <>
                 <TouchableOpacity
@@ -393,7 +428,7 @@ export default function DashboardScreen() {
                 >
                   <Feather name="eye" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>View Stocks</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#e60000" />
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -402,7 +437,7 @@ export default function DashboardScreen() {
                 >
                   <Feather name="package" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>Restock</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#e60000" />
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
                 </TouchableOpacity>
               </>
             )}
@@ -427,47 +462,47 @@ export default function DashboardScreen() {
               onPress={closeMenu}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Feather name="x" size={28} color="#1f2937" />
+              <Feather name="x" size={28} color={COLORS.nearBlack} />
             </TouchableOpacity>
 
             {/* Menu Items List */}
             <View style={styles.drawerMenuWrapper}>
               <TouchableOpacity
-  style={styles.drawerItem}
-  onPress={() => navigateTo('/dashboard module/account-info')}
->
-  <View style={styles.drawerIconBox}>
-    <Ionicons name="person-outline" size={40} color="#ef0000" />
-  </View>
-  <Text style={styles.drawerItemText}>Account Information</Text>
-</TouchableOpacity>
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/account-info')}
+              >
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="person-outline" size={40} color={COLORS.red} />
+                </View>
+                <Text style={styles.drawerItemText}>Account Information</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
-  style={styles.drawerItem}
-  onPress={() => navigateTo('/dashboard module/stock-alert')}
->
-  <View style={styles.drawerIconBox}>
-    <Ionicons name="notifications" size={40} color="#ef0000" />
-  </View>
-  <Text style={styles.drawerItemText}>Stock Alert</Text>
-</TouchableOpacity>
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/stock-alert')}
+              >
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="notifications" size={40} color={COLORS.red} />
+                </View>
+                <Text style={styles.drawerItemText}>Stock Alert</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
-  style={styles.drawerItem}
-  onPress={() => navigateTo('/dashboard module/manage-price')}
->
-  <View style={styles.drawerIconBox}>
-    <MaterialCommunityIcons name="tag-multiple" size={40} color="#ef0000" />
-  </View>
-  <Text style={styles.drawerItemText}>Manage Price</Text>
-</TouchableOpacity>
+                style={styles.drawerItem}
+                onPress={() => navigateTo('/dashboard module/manage-price')}
+              >
+                <View style={styles.drawerIconBox}>
+                  <MaterialCommunityIcons name="tag-multiple" size={40} color={COLORS.red} />
+                </View>
+                <Text style={styles.drawerItemText}>Manage Price</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.drawerItem}
                 onPress={() => navigateTo('/dashboard module/stocks')}
               >
                 <View style={styles.drawerIconBox}>
-                  <Ionicons name="eye-outline" size={42} color="#ef0000" />
+                  <Ionicons name="eye-outline" size={42} color={COLORS.red} />
                 </View>
                 <Text style={styles.drawerItemText}>Live Stock Count</Text>
               </TouchableOpacity>
@@ -477,7 +512,7 @@ export default function DashboardScreen() {
                 onPress={() => navigateTo('/dashboard module/record-waste')}
               >
                 <View style={styles.drawerIconBox}>
-                  <Ionicons name="document-text-outline" size={40} color="#ef0000" />
+                  <Ionicons name="document-text-outline" size={40} color={COLORS.red} />
                 </View>
                 <Text style={styles.drawerItemText}>Record Waste</Text>
               </TouchableOpacity>
@@ -487,17 +522,56 @@ export default function DashboardScreen() {
                 onPress={() => navigateTo('/dashboard module/waste-history')}
               >
                 <View style={styles.drawerIconBox}>
-                  <Ionicons name="trash-outline" size={40} color="#ef0000" />
+                  <Ionicons name="trash-outline" size={40} color={COLORS.red} />
                 </View>
                 <Text style={styles.drawerItemText}>Waste History</Text>
               </TouchableOpacity>
             </View>
 
             {/* Log out Button */}
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={() => {
+                closeMenu();
+                setTimeout(() => setLogoutModalVisible(true), 240);
+              }}
+            >
               <Text style={styles.logoutBtnText}>Log out</Text>
             </TouchableOpacity>
           </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Logout Confirmation Dialog */}
+      <Modal
+        visible={logoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconCircle}>
+              <MaterialCommunityIcons name="logout" size={46} color={COLORS.red} />
+            </View>
+
+            <Text style={styles.modalPrompt}>
+              Are you sure you want to{'\n'}log out your account?
+            </Text>
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setLogoutModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmLogout}>
+                <Text style={styles.confirmBtnText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -507,14 +581,14 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fffdf5',
+    backgroundColor: COLORS.cream,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#fffdf5',
+    backgroundColor: COLORS.cream,
   },
   scrollContainer: {
     flexGrow: 1,
@@ -525,7 +599,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 480,
-    backgroundColor: '#fffdf5',
+    backgroundColor: COLORS.cream,
   },
   paddedSection: {
     paddingHorizontal: 14,
@@ -548,7 +622,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#f6b800',
+    backgroundColor: COLORS.yellow,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -556,18 +630,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   welcomeText: {
-    fontSize: 13,
-    color: '#374151',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12.5,
+    color: COLORS.nearBlack,
   },
   userName: {
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
     fontSize: 18,
-    color: '#111827',
+    color: COLORS.nearBlack,
   },
   sectionTitle: {
-    fontWeight: '500',
-    fontSize: 22,
-    color: '#111827',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 21,
+    color: COLORS.nearBlack,
     marginBottom: 22,
     marginLeft: 12,
   },
@@ -597,8 +672,9 @@ const styles = StyleSheet.create({
   },
   axisLabel: {
     width: 24,
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11,
-    color: '#1f2937',
+    color: COLORS.nearBlack,
     textAlign: 'right',
     paddingRight: 8,
   },
@@ -629,7 +705,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: '100%',
-    backgroundColor: '#d92323',
+    backgroundColor: COLORS.red,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
@@ -645,16 +721,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   barLabel: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 10,
-    color: '#1f2937',
+    color: COLORS.nearBlack,
     textAlign: 'center',
   },
   salesSubtitle: {
+    fontFamily: 'Poppins_400Regular',
     textAlign: 'center',
-    fontSize: 16,
-    color: '#111827',
+    fontSize: 15,
+    color: COLORS.nearBlack,
     marginTop: 28,
-    fontWeight: '400',
   },
   seeAllBtn: {
     alignSelf: 'flex-end',
@@ -662,30 +739,30 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   seeAllText: {
-    color: '#e11d48',
+    fontFamily: 'Poppins_500Medium',
+    color: COLORS.red,
     fontSize: 12,
-    fontWeight: '500',
     textDecorationLine: 'underline',
   },
   /* Flush Edge-to-Edge Transaction History Block */
   tableCard: {
     width: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.white,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#ffc400',
+    backgroundColor: COLORS.yellow,
     paddingVertical: 20,
     paddingHorizontal: 10,
     alignItems: 'center',
   },
   thCell: {
-    fontWeight: '500',
-    fontSize: 12,
-    color: '#e60000',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 11,
+    color: COLORS.red,
     textAlign: 'center',
   },
   tableRow: {
@@ -693,34 +770,36 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     paddingHorizontal: 10,
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.white,
   },
   tableRowBorder: {
     borderBottomWidth: 1.5,
-    borderBottomColor: '#ffc400',
+    borderBottomColor: COLORS.yellow,
   },
   tdCell: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11,
-    color: '#1f2937',
+    color: COLORS.nearBlack,
     textAlign: 'center',
     lineHeight: 16,
   },
   emptyRow: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.white,
   },
   emptyText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 12,
-    color: '#6b7280',
+    color: COLORS.nearBlack,
   },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.white,
     borderWidth: 1.5,
-    borderColor: '#f6b800',
+    borderColor: COLORS.yellow,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -729,10 +808,9 @@ const styles = StyleSheet.create({
   actionCardText: {
     flex: 1,
     marginLeft: 12,
-    fontSize: 14,
-    fontStyle: 'italic',
-    color: '#262626',
-    fontWeight: '500',
+    fontFamily: 'Poppins_400Regular_Italic',
+    fontSize: 13.5,
+    color: COLORS.nearBlack,
   },
   /* Sidebar Drawer Styles */
   drawerOverlay: {
@@ -744,7 +822,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   drawerContainer: {
-    backgroundColor: '#fdf8ea',
+    backgroundColor: COLORS.drawerCream,
     paddingTop: Platform.OS === 'ios' ? 50 : 24,
     paddingHorizontal: 22,
     paddingBottom: 32,
@@ -761,7 +839,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   drawerMenuWrapper: {
-    gap: 28,
+    gap: 26,
     marginTop: 8,
   },
   drawerItem: {
@@ -775,39 +853,110 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   drawerItemText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 13.5,
-    color: '#1f2937',
-    fontWeight: '400',
+    color: COLORS.nearBlack,
   },
   logoutBtn: {
     marginTop: 42,
     marginHorizontal: 18,
     height: 44,
-    backgroundColor: '#ef0000',
+    backgroundColor: COLORS.red,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   logoutBtnText: {
-    color: '#ffffff',
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
     fontSize: 14,
-    fontWeight: '800',
+  },
+  /* Confirmation Dialog Styles */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FDFBF0',
+    borderRadius: 34,
+    paddingVertical: 32,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 1,
+    borderColor: COLORS.nearBlack,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: COLORS.white,
+  },
+  modalPrompt: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 15,
+    color: COLORS.red,
+    textAlign: 'center',
+    lineHeight: 23,
+    marginBottom: 26,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.red,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.red,
+    fontSize: 12.5,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: COLORS.red,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
+    fontSize: 12.5,
   },
   errorText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 15,
-    color: '#b91c1c',
+    color: COLORS.red,
     textAlign: 'center',
     marginBottom: 12,
   },
   retryButton: {
-    backgroundColor: '#e60000',
+    backgroundColor: COLORS.red,
     paddingVertical: 10,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   retryButtonText: {
+    fontFamily: 'Poppins_700Bold',
     fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
+    color: COLORS.white,
   },
 });

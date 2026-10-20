@@ -814,3 +814,97 @@ app.delete('/protected/staff/:id', authenticateToken, async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// POS ORDER, TRANSACTION HISTORY & PASSWORD
+// ==========================================
+
+// 1. POST /protected/orders — Create POS Order & Payment using sp_create_order
+app.post('/protected/orders', authenticateToken, async (req, res) => {
+  const userId = req.user.id || req.user.User_ID;
+  const { items, amountReceived, clientRequestId } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: 'Cart cannot be empty.' });
+  }
+
+  const reqUuid =
+    clientRequestId ||
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+
+  try {
+    // Call sp_create_order stored procedure
+    await pool.query(
+      `CALL sp_create_order(?, ?, ?, ?, @o_order_id, @o_change)`,
+      [userId, reqUuid, JSON.stringify(items), Number(amountReceived)]
+    );
+
+    const [[outVars]] = await pool.query(
+      `SELECT @o_order_id AS orderId, @o_change AS changeAmount`
+    );
+
+    return res.json({
+      message: 'Transaction success!',
+      orderId: outVars?.orderId,
+      changeAmount: Number(outVars?.changeAmount || 0),
+    });
+  } catch (error) {
+    console.error('POS Order Error:', error);
+    return res.status(400).json({
+      message: error.sqlMessage || 'Failed to complete transaction.',
+    });
+  }
+});
+
+// 2. GET /protected/transactions — Full Transaction History list
+app.get('/protected/transactions', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        o.Order_ID AS id,
+        DATE_FORMAT(o.Order_Date_Time, '%m/%e/%Y') AS date,
+        DATE_FORMAT(o.Order_Date_Time, '%H:%i') AS time,
+        'Cash' AS method,
+        COALESCE(
+          (SELECT GROUP_CONCAT(m.Item_Name SEPARATOR ', ')
+           FROM Order_Details od
+           JOIN Menu_Items m ON od.Item_ID = m.Item_ID
+           WHERE od.Order_ID = o.Order_ID),
+          'Whole Cut Chicken'
+        ) AS product,
+        CAST(ROUND(o.Total_Amount) AS CHAR) AS amount
+      FROM Orders o
+      ORDER BY o.Order_Date_Time DESC
+      LIMIT 50
+    `);
+    return res.json({ transactions: rows });
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    return res.status(500).json({ message: 'Failed to load transaction history' });
+  }
+});
+
+// 3. PUT /protected/change-password — Authenticated Edit Password
+app.put('/protected/change-password', authenticateToken, async (req, res) => {
+  const userId = req.user.id || req.user.User_ID;
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE Users SET Password_Hash = ? WHERE User_ID = ?`, [
+      hashed,
+      userId,
+    ]);
+    return res.json({ message: 'Password updated successfully!' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    return res.status(500).json({ message: 'Failed to update password.' });
+  }
+});
