@@ -12,7 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 
 // ---- API config (same pattern as your login screen) ----
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -194,3 +194,27 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 });
+
+// Add inside your Role.ts file (alongside getToken and clearToken)
+let globalDarkMode = false;
+let globalUserRole: 'cashier' | 'manager' = 'cashier';
+const listeners = new Set<() => void>();
+
+export const getDarkMode = () => globalDarkMode;
+export const setGlobalDarkMode = (val: boolean) => {
+  globalDarkMode = val;
+  listeners.forEach((fn) => fn());
+};
+
+export const getUserRole = () => globalUserRole;
+export const setGlobalUserRole = (role: 'cashier' | 'manager') => {
+  globalUserRole = role;
+  listeners.forEach((fn) => fn());
+};
+
+export const subscribeAppTheme = (fn: () => void) => {
+  listeners.add(fn);
+  return () => listeners.delete(fn);return () => {
+    listeners.delete(fn); // Curly braces ensure it returns void!
+  };
+};

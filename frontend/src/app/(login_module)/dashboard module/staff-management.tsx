@@ -5,7 +5,6 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
   StatusBar,
@@ -15,8 +14,9 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -29,7 +29,7 @@ import {
 import axios from 'axios';
 import { getToken, clearToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -135,7 +135,7 @@ export default function StaffManagementScreen() {
 
   const navigateFromDrawer = (path: string) => {
     closeMenu();
-    router.push(path as any);
+    router.push(path as Href);
   };
 
   // Handle pressing the Slash (Suspend/Unsuspend) icon on a row
@@ -146,12 +146,12 @@ export default function StaffManagementScreen() {
     } else {
       setTooltipStaffId(null);
       router.push({
-        pathname: '/dashboard module/suspend-staff' as any,
+        pathname: '/dashboard module/suspend-staff' as Href,
         params: {
           id: String(staff.id),
           name: staff.name,
         },
-      });
+      } as any);
     }
   };
 
@@ -171,7 +171,7 @@ export default function StaffManagementScreen() {
       );
       setUnsuspendModalVisible(false);
       setTooltipStaffId(null);
-    } catch (err: any) {
+    } catch {
       // Update locally even if using mock data
       setStaffList((prev) =>
         prev.map((s) => (s.id === selectedStaff.id ? { ...s, status: 'active' } : s))
@@ -222,8 +222,8 @@ export default function StaffManagementScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -304,7 +304,7 @@ export default function StaffManagementScreen() {
                         onPress={() => {
                           setTooltipStaffId(null);
                           router.push({
-                            pathname: '/dashboard module/edit-staff' as any,
+                            pathname: '/dashboard module/edit-staff' as Href,
                             params: {
                               id: String(staff.id),
                               name: staff.name,
@@ -312,7 +312,7 @@ export default function StaffManagementScreen() {
                               email: staff.email,
                               date: staff.employmentDate,
                             },
-                          });
+                          } as any);
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       >
@@ -336,7 +336,7 @@ export default function StaffManagementScreen() {
                           />
                         </TouchableOpacity>
 
-                        {/* Floating "Unsuspend Staff" Badge matching image_70a8fa.png */}
+                        {/* Floating "Unsuspend Staff" Badge */}
                         {showTooltip && (
                           <TouchableOpacity
                             style={styles.unsuspendTooltip}
@@ -380,7 +380,7 @@ export default function StaffManagementScreen() {
           <View style={styles.plusRow}>
             <TouchableOpacity
               style={styles.plusBtn}
-              onPress={() => router.push('/dashboard module/create-staff' as any)}
+              onPress={() => router.push('/dashboard module/create-staff' as Href)}
             >
               <Feather name="plus" size={34} color="#111827" />
             </TouchableOpacity>
@@ -388,7 +388,7 @@ export default function StaffManagementScreen() {
         </View>
       </ScrollView>
 
-      {/* 1. Unsuspend Staff Confirmation Modal matching image_70a91b.png */}
+      {/* 1. Unsuspend Staff Confirmation Modal */}
       <Modal
         visible={unsuspendModalVisible}
         transparent
@@ -430,7 +430,7 @@ export default function StaffManagementScreen() {
         </View>
       </Modal>
 
-      {/* 2. Delete Staff Confirmation Modal matching image_70a93e.png */}
+      {/* 2. Delete Staff Confirmation Modal */}
       <Modal
         visible={deleteModalVisible}
         transparent
@@ -561,7 +561,7 @@ export default function StaffManagementScreen() {
         </View>
       </Modal>
 
-      {/* 4. Logout Confirmation Modal matching image_70a973.png */}
+      {/* 4. Logout Confirmation Modal */}
       <Modal
         visible={logoutModalVisible}
         transparent

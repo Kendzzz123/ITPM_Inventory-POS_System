@@ -3,8 +3,10 @@ import {
   View,
   Text,
   TextInput,
+  type TextInputInstance,
+  type TextInputKeyPressEvent,
   StyleSheet,
-  Pressable, 
+  Pressable,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
@@ -21,8 +23,7 @@ import axios from 'axios';
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
 
-// Replace YOUR_PC_IP with your computer's local Wi-Fi IPv4 address
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -40,7 +41,8 @@ export default function EmailVerificationScreen() {
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isResending, setIsResending] = useState<boolean>(false);
 
-  const inputsRef = useRef<Array<TextInput | null>>([]);
+  // SDK 58 / React Native 0.88 Strict TypeScript API uses TextInputInstance for refs
+  const inputsRef = useRef<Array<TextInputInstance | null>>([]);
 
   // Countdown timer for code resend
   useEffect(() => {
@@ -94,7 +96,7 @@ export default function EmailVerificationScreen() {
     }
   };
 
-  const handleKeyPress = (e: any, index: number) => {
+  const handleKeyPress = (e: TextInputKeyPressEvent, index: number) => {
     if (e.nativeEvent.key === 'Backspace' && !code[index] && index > 0) {
       inputsRef.current[index - 1]?.focus();
     }
@@ -156,7 +158,7 @@ export default function EmailVerificationScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FDFBF4" />
+      <StatusBar barStyle="dark-content" />
 
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <KeyboardAvoidingView
@@ -166,12 +168,12 @@ export default function EmailVerificationScreen() {
         >
           <View style={styles.card}>
             {/* Header Back Button */}
-            <MaterialIcons 
-              style={styles.usogkaonti} 
-              name="chevron-left" 
-              size={50} 
+            <MaterialIcons
+              style={styles.usogkaonti}
+              name="chevron-left"
+              size={50}
               color="#111827"
-              onPress={() => router.replace('/forgotpassword')} 
+              onPress={() => router.replace('/forgotpassword')}
             />
 
             <View style={styles.screenContent}>
@@ -182,7 +184,7 @@ export default function EmailVerificationScreen() {
 
                 <Text style={styles.title}>Check your email</Text>
                 <Text style={styles.subtitle}>
-                  We sent a 6-digit confirmation code to 
+                  We sent a 6-digit confirmation code to
                   <Text style={styles.emailText}> {emailDisplay || 'your email'}</Text>
                 </Text>
 
@@ -228,10 +230,10 @@ export default function EmailVerificationScreen() {
                 </View>
 
                 {/* Verify Button */}
-                <Pressable 
+                <Pressable
                   style={({ pressed }) => [
                     styles.SendCodeButton,
-                    pressed && styles.SendCodeButtonPressed
+                    pressed && styles.SendCodeButtonPressed,
                   ]}
                   onPress={() => verifyCode()}
                   disabled={isVerifying}

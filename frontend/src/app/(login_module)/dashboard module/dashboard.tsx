@@ -6,7 +6,6 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Animated,
   useWindowDimensions,
   Modal,
@@ -14,8 +13,9 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -27,7 +27,7 @@ import {
 import axios from 'axios';
 import { getToken, clearToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36'; // Update with your local IP if needed
+const YOUR_PC_IP = '192.168.1.40'; // Update with your local IP if needed
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -128,7 +128,7 @@ export default function DashboardScreen() {
 
       // Redirect cashiers to Cashier Dashboard automatically
       if (loggedUser?.role?.toLowerCase() === 'cashier') {
-        router.replace('/dashboard module/cashier-dashboard' as any);
+        router.replace('/dashboard module/cashier-dashboard' as Href);
         return;
       }
 
@@ -210,7 +210,7 @@ export default function DashboardScreen() {
       useNativeDriver: true,
     }).start(() => {
       setMenuVisible(false);
-      router.push(path as any);
+      router.push(path as Href);
     });
   };
 
@@ -256,8 +256,8 @@ export default function DashboardScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -270,11 +270,21 @@ export default function DashboardScreen() {
           />
         }
       >
+        <View style={styles.container}>
+        <TouchableOpacity
+                onPress={openMenu}
+                hitSlop={{ top: 20, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
+              </TouchableOpacity>
+        </View>
         <View style={styles.card}>
           {/* Padded Top Section (Header + Sales Report) */}
+          
           <View style={styles.paddedSection}>
             {/* Header */}
             <View style={styles.header}>
+              
               <View style={styles.profileContainer}>
                 <View style={styles.avatarCircle}>
                   <Ionicons name="person-outline" size={36} color="#9e7b08" />
@@ -287,12 +297,7 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity
-                onPress={openMenu}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
-              </TouchableOpacity>
+              
             </View>
 
             {/* Sales Report Title */}
@@ -354,7 +359,7 @@ export default function DashboardScreen() {
             <Text style={styles.salesSubtitle}>You sold {totalSold} items this day.</Text>
             <TouchableOpacity
               style={styles.seeAllBtn}
-              onPress={() => router.push('/dashboard module/sales-report' as any)}
+              onPress={() => router.push('/dashboard module/sales-report' as Href)}
             >
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
@@ -414,7 +419,7 @@ export default function DashboardScreen() {
           <View style={styles.paddedSection}>
             <TouchableOpacity
               style={styles.seeAllBtn}
-              onPress={() => router.push('/TransactionHistory' as any)}
+              onPress={() => router.push('/TransactionHistory' as Href)}
             >
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
@@ -424,7 +429,7 @@ export default function DashboardScreen() {
               <>
                 <TouchableOpacity
                   style={styles.actionCard}
-                  onPress={() => router.push('/dashboard module/stocks' as any)}
+                  onPress={() => router.push('/dashboard module/stocks' as Href)}
                 >
                   <Feather name="eye" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>View Stocks</Text>
@@ -433,10 +438,26 @@ export default function DashboardScreen() {
 
                 <TouchableOpacity
                   style={styles.actionCard}
-                  onPress={() => router.push('/dashboard module/restock' as any)}
+                  onPress={() => router.push('/dashboard module/restock' as Href)}
                 >
                   <Feather name="package" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>Restock</Text>
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionCard}
+                  onPress={() => router.push('/dashboard module/record-waste' as Href)}
+                >
+                  <Feather name="eye" size={22} color="#7c6e1d" />
+                  <Text style={styles.actionCardText}>Record Waste</Text>
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionCard}
+                  onPress={() => router.push('/dashboard module/waste-history' as Href)}
+                >
+                  <Feather name="eye" size={22} color="#7c6e1d" />
+                  <Text style={styles.actionCardText}>Waste History</Text>
                   <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
                 </TouchableOpacity>
               </>
@@ -579,6 +600,11 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    width: '100%',
+    marginLeft: 600,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.cream,

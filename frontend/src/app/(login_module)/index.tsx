@@ -1,163 +1,259 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  Pressable, 
-  Image, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
-  Alert
+  Alert,
+  StatusBar,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, type Href } from 'expo-router';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import axios from 'axios';
-import { saveToken } from './Role';
-const YOUR_PC_IP = '192.168.1.36';
-// When running on Web / iOS simulator use localhost; on Android emulator use 10.0.2.2
+import { saveToken, clearToken, setGlobalUserRole } from './Role';
+
+const YOUR_PC_IP = '192.168.1.40'; // Keep synced with your PC IP
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
-  default: `http://${YOUR_PC_IP}:3000`, // Used by both iOS & Android physical devices
+  default: `http://${YOUR_PC_IP}:3000`,
 });
 
+// 4.1 Color Palette Specification
+const COLORS = {
+  yellow: '#FFC400',    // Brand yellow
+  red: '#EC0000',       // Primary buttons, links
+  cream: '#FFFDF5',     // Light cream screen background
+  white: '#FFFFFF',     // Input fields, text on red buttons
+  nearBlack: '#0F1015', // Titles, labels, and body text
+};
 
 export default function LoginScreen() {
   const router = useRouter();
+
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_700Bold,
+  });
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    setErrorMsg(null);
     if (!email.trim() || !password) {
-      Alert.alert('Error', 'Please enter your email and password');
+      setErrorMsg('Please enter your email and password.');
+      if (Platform.OS !== 'web') {
+        Alert.alert('Error', 'Please enter your email and password.');
+      }
       return;
     }
 
-    setLoading(true);
+setLoading(true);
     try {
       const response = await axios.post(`${API_URL}/auth/login`, {
         email: email.trim(),
         password: password,
       });
 
-      console.log('Login success:', response.data);
-      await saveToken(response.data.token);   // <-- add this
-      router.replace('/dashboard module/dashboard');
+      await saveToken(response.data.token);
 
+      const userRole = response.data?.user?.role?.toLowerCase() || '';
+      setGlobalUserRole(userRole === 'manager' ? 'manager' : 'cashier');
+
+      const isDefaultPassword =
+        response.data?.mustChangePassword === true ||
+        password === 'password123' ||
+        password === 'Mr.liempo123';
+
+      // If new staff/user logged in with default password, require password change first
+      if (isDefaultPassword) {
+        router.replace({
+          pathname: '/change-password' as Href,
+          params: { role: userRole },
+        } as any);
+        return;
+      }
+
+      // Otherwise land on Home Page based on role
+      if (userRole === 'cashier') {
+        router.replace('/dashboard module/cashier-dashboard' as Href);
+      } else {
+        router.replace('/dashboard module/dashboard' as Href);
+      }
     } catch (error: any) {
-      console.error('Login error:', error.response?.data || error.message);
-      const message = error.response?.data?.message || 'Failed to connect to server';
-      Alert.alert('Login Failed', message);
+      const message =
+        error.response?.data?.message || error.message || 'Failed to connect to server';
+      setErrorMsg(message);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Login Failed', message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.loadingCenter}>
+        <ActivityIndicator size="large" color={COLORS.red} />
+      </View>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer}
-          bounces={false}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.card}>
-            <View style={styles.banner}>
-              <Image
-                source={require('@/assets/images/logo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-              <Text style={styles.bannerSubtitle}>Inventory system and POS</Text>
-            </View>
-
-            {/* Bottom Form Section */}
-            <View style={styles.formContainer}>
-              <Text style={styles.title}>Welcome!</Text>
-              <Text style={styles.subtitle}>Please log in your account.</Text>
-
-              {/* Email Field */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="manager@example.com"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.card}>
+              {/* Top Yellow Brand Banner */}
+              <View style={styles.banner}>
+                <Image
+                  source={require('@/assets/images/logo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
                 />
+                <Text style={styles.bannerSubtitle}>
+                  Inventory system and POS
+                </Text>
               </View>
 
-              {/* Password Field */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry
-                  value={password}
-                  onChangeText={setPassword}
-                />
+              {/* Bottom Form Section */}
+              <View style={styles.formContainer}>
+                <Text style={styles.title}>Welcome!</Text>
+                <Text style={styles.subtitle}>Please log in your account.</Text>
+
+                {/* Email Field */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={(val) => {
+                      setEmail(val);
+                      setErrorMsg(null);
+                    }}
+                  />
+                </View>
+
+                {/* Password Field with Eye Icon */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={styles.passwordContainer}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={(val) => {
+                        setPassword(val);
+                        setErrorMsg(null);
+                      }}
+                    />
+                    <Pressable
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={styles.eyeIconBtn}
+                    >
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={22}
+                        color="#6B7280"
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Forgot Password Link */}
+                <Pressable
+                  style={styles.forgotContainer}
+                  onPress={() => router.push('/forgotpassword')}
+                >
+                  <Text style={styles.forgotText}>Forgot Password</Text>
+                </Pressable>
+
+                {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+
+                {/* Primary Red Log In Button */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.loginButton,
+                    pressed && styles.loginButtonPressed,
+                  ]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.loginButtonText}>Log in</Text>
+                  )}
+                </Pressable>
               </View>
-
-              {/* Forgot Password */}
-              <Pressable 
-                style={styles.forgotContainer}
-                onPress={() => router.push('/forgotpassword')}
-              >
-                <Text style={styles.forgotText}>Forgot Password</Text>
-              </Pressable>
-
-              {/* Red Log In Button */}
-              <Pressable 
-                style={({ pressed }) => [
-                  styles.loginButton,
-                  pressed && styles.loginButtonPressed
-                ]}
-                onPress={handleLogin}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={styles.loginButtonText}>Log in</Text>
-                )}
-              </Pressable>
             </View>
-
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.cream,
+  },
+  loadingCenter: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.cream,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    backgroundColor: COLORS.cream,
   },
   card: {
     width: '100%',
-    minHeight: 820,
-    maxWidth: 500,
-    backgroundColor: '#fffdf5',
+    maxWidth: 480,
+    flex: 1,
+    backgroundColor: COLORS.cream,
   },
   banner: {
-    backgroundColor: '#f6b800',
-    paddingTop: 100,
-    paddingBottom: 50,
+    backgroundColor: COLORS.yellow,
+    paddingTop: Platform.OS === 'ios' ? 60 : 75,
+    paddingBottom: 46,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
@@ -165,55 +261,79 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 36,
   },
   logo: {
-    width: 260,
-    height: 120,
-    marginBottom: 8,
+    width: 250,
+    height: 115,
+    marginBottom: 6,
   },
   bannerSubtitle: {
     fontFamily: 'Poppins_500Medium',
     fontSize: 13,
-    color: '#1a1a1a',
+    color: COLORS.nearBlack,
     marginTop: 4,
   },
   formContainer: {
-    paddingHorizontal: 36,
-    paddingTop: 30,
+    paddingHorizontal: 34,
+    paddingTop: 28,
     paddingBottom: 40,
   },
   title: {
-    paddingTop: 30,
+    paddingTop: 16,
     fontFamily: 'Poppins_700Bold',
     fontSize: 26,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.nearBlack,
   },
   subtitle: {
     fontFamily: 'Poppins_400Regular',
-    fontSize: 14,
+    fontSize: 13.5,
     textAlign: 'center',
-    color: '#262626',
+    color: COLORS.nearBlack,
     marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 26,
   },
   inputGroup: {
     marginBottom: 16,
   },
   label: {
-    fontFamily: 'Poppins_500Medium',
-    fontSize: 13,
-    color: '#374151',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12.5,
+    color: COLORS.nearBlack,
     marginBottom: 6,
+    marginLeft: 2,
   },
   input: {
     height: 48,
-    backgroundColor: '#ffffff',
-    borderWidth: 2,
-    borderColor: '#f6b800',
+    backgroundColor: COLORS.white,
+    borderWidth: 1.8,
+    borderColor: COLORS.yellow,
     borderRadius: 12,
     paddingHorizontal: 14,
     fontFamily: 'Poppins_400Regular',
-    fontSize: 15,
-    color: '#111827',
+    fontSize: 14,
+    color: COLORS.nearBlack,
+  },
+  passwordContainer: {
+    height: 48,
+    backgroundColor: COLORS.white,
+    borderWidth: 1.8,
+    borderColor: COLORS.yellow,
+    borderRadius: 12,
+    paddingLeft: 14,
+    paddingRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    height: '100%',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    color: COLORS.nearBlack,
+  },
+  eyeIconBtn: {
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   forgotContainer: {
     alignSelf: 'flex-end',
@@ -223,14 +343,22 @@ const styles = StyleSheet.create({
   forgotText: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 12,
-    color: '#e11d48',
+    color: COLORS.red,
     textDecorationLine: 'underline',
   },
+  errorText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: COLORS.red,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
   loginButton: {
-    margin: 50,
+    alignSelf: 'center',
+    width: 220,
     height: 48,
-    backgroundColor: '#e60000',
-    borderRadius: 12,
+    backgroundColor: COLORS.red,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
@@ -240,7 +368,7 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: 'Poppins_700Bold',
-    color: '#ffffff',
+    color: COLORS.white,
     fontSize: 16,
   },
 });

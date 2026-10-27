@@ -4,17 +4,17 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { getToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -72,10 +72,7 @@ export default function SalesReportScreen() {
 
   const setFallback = () => {
     setSalesData([
-      { label: 'Whole Juicy Chicken', value: 8 },
-      { label: 'Half Juicy chicken', value: 5 },
-      { label: 'Spicy Chorizo', value: 1 },
-      { label: 'Regular Chorizo', value: 1 },
+      { label: 'No Data', value: 0 },
     ]);
     setMaxScale(8);
   };
@@ -93,8 +90,8 @@ export default function SalesReportScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>

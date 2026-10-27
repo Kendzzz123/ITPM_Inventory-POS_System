@@ -1,24 +1,25 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  Pressable, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
   TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
-  Alert 
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 
 // Update with your PC's local Wi-Fi IPv4 address when testing on physical devices
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -27,9 +28,11 @@ const API_URL = Platform.select({
 export default function NewPasswordScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string; otp?: string }>();
-  
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleConfirm = async () => {
@@ -84,14 +87,14 @@ export default function NewPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.screen}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.card}>
           <Pressable onPress={() => router.push({ pathname: '/OTP', params: { email: params.email } })}>
-            <MaterialIcons name="chevron-left" size={50} color="black" />
+            <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
           </Pressable>
 
           <View style={styles.new}>
@@ -109,39 +112,65 @@ export default function NewPasswordScreen() {
             <Text style={styles.title}>New Password</Text>
             <Text style={styles.subtitle}>Kindly enter your new password</Text>
 
-            {/* New Password Field */}
+            {/* New Password Field with Eye Icon */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>New Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="New password (min. 6 characters)"
-                placeholderTextColor="#9ca3af"
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-                editable={!loading}
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="New password (min. 6 characters)"
+                  placeholderTextColor="#9ca3af"
+                  secureTextEntry={!showNewPassword}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  editable={!loading}
+                />
+                <Pressable
+                  onPress={() => setShowNewPassword((prev) => !prev)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.eyeIconBtn}
+                >
+                  <Ionicons
+                    name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#6B7280"
+                  />
+                </Pressable>
+              </View>
             </View>
 
-            {/* Confirm New Password Field */}
+            {/* Confirm New Password Field with Eye Icon */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Confirm New Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Re-enter your password"
-                placeholderTextColor="#9ca3af"
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                editable={!loading}
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Re-enter your password"
+                  placeholderTextColor="#9ca3af"
+                  secureTextEntry={!showConfirmPassword}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  editable={!loading}
+                />
+                <Pressable
+                  onPress={() => setShowConfirmPassword((prev) => !prev)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.eyeIconBtn}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#6B7280"
+                  />
+                </Pressable>
+              </View>
             </View>
 
             {/* Confirm Button */}
-            <Pressable 
+            <Pressable
               style={({ pressed }) => [
                 styles.SendCodeButton,
-                pressed && styles.SendCodeButtonPressed
+                pressed && styles.SendCodeButtonPressed,
               ]}
               onPress={handleConfirm}
               disabled={loading}
@@ -160,6 +189,9 @@ export default function NewPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    paddingTop: 40,
+  },
   new: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -171,7 +203,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#000',
     justifyContent: 'center',
-    alignItems: 'center', 
+    alignItems: 'center',
   },
   screen: {
     flex: 1,
@@ -212,16 +244,28 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 6,
   },
-  input: {
+  passwordContainer: {
     height: 48,
     backgroundColor: '#ffffff',
     borderWidth: 2,
     borderColor: '#f6b800',
     borderRadius: 12,
-    paddingHorizontal: 14,
+    paddingLeft: 14,
+    paddingRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    height: '100%',
     fontFamily: 'Poppins_400Regular',
     fontSize: 15,
     color: '#111827',
+  },
+  eyeIconBtn: {
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   SendCodeButton: {
     height: 48,

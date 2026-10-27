@@ -1,20 +1,18 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+// cashier-account.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
   StatusBar,
-  Modal,
-  Animated,
-  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -22,29 +20,31 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import axios from 'axios';
-import { getToken, clearToken } from '../Role';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  subscribeAppTheme,
+} from '../Role';
+import RoleSideDrawer from '../RoleSideDrawer';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
 });
 
-// 4.1 Color Palette Specification
 const COLORS = {
   yellow: '#FFC400',
   red: '#EC0000',
   cream: '#FFFDF5',
-  drawerCream: '#FDE8AA',
-  modalCream: '#FDFBF0',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
+  darkBg: '#181920',
 };
 
 export default function CashierAccountScreen() {
   const router = useRouter();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -58,12 +58,17 @@ export default function CashierAccountScreen() {
     formattedDate: 'July 7, 2025',
   });
   const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-
-  // Side Menu & Logout Confirmation Dialog State
+  const [darkMode, setDarkMode] = useState(getDarkMode());
   const [menuVisible, setMenuVisible] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+
+  const iconColor = darkMode ? COLORS.white : COLORS.nearBlack;
+  const textColor = { color: iconColor };
+
+  useEffect(() => {
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+    });
+  }, []);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -90,40 +95,20 @@ export default function CashierAccountScreen() {
     loadProfile();
   }, [loadProfile]);
 
-  const openMenu = () => {
-    setMenuVisible(true);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeMenu = () => {
-    Animated.timing(slideAnim, {
-      toValue: DRAWER_WIDTH,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => setMenuVisible(false));
-  };
-
-  const handleConfirmLogout = async () => {
-    setLogoutModalVisible(false);
-    await clearToken();
-    router.replace('/');
-  };
-
   if (!fontsLoaded) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, darkMode && { backgroundColor: COLORS.darkBg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, darkMode && { backgroundColor: '#181920' }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+    <SafeAreaView
+      style={[styles.safeArea, darkMode && { backgroundColor: COLORS.darkBg }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
           {/* Top Bar */}
@@ -132,17 +117,17 @@ export default function CashierAccountScreen() {
               onPress={() => router.back()}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />
+              <Ionicons name="chevron-back" size={30} color={iconColor} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={openMenu}
+              onPress={() => setMenuVisible(true)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
+              <Ionicons name="menu" size={32} color={iconColor} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.pageTitle}>Account Information</Text>
+          <Text style={[styles.pageTitle, textColor]}>Account Information</Text>
 
           {/* Yellow Avatar Circle */}
           <View style={styles.avatarCircle}>
@@ -156,22 +141,22 @@ export default function CashierAccountScreen() {
               {/* Name */}
               <View style={[styles.infoRow, styles.rowDivider]}>
                 <View style={styles.iconCol}>
-                  <Ionicons name="person-outline" size={44} color={COLORS.nearBlack} />
+                  <Ionicons name="person-outline" size={44} color={iconColor} />
                 </View>
                 <View style={styles.textCol}>
-                  <Text style={styles.infoLabel}>Name</Text>
-                  <Text style={styles.infoValue}>{account.name}</Text>
+                  <Text style={[styles.infoLabel, textColor]}>Name</Text>
+                  <Text style={[styles.infoValue, textColor]}>{account.name}</Text>
                 </View>
               </View>
 
               {/* Contact Number */}
               <View style={[styles.infoRow, styles.rowDivider]}>
                 <View style={styles.iconCol}>
-                  <Feather name="phone-call" size={38} color={COLORS.nearBlack} />
+                  <Feather name="phone-call" size={38} color={iconColor} />
                 </View>
                 <View style={styles.textCol}>
-                  <Text style={styles.infoLabel}>Contact Number</Text>
-                  <Text style={styles.infoValue}>{account.phone}</Text>
+                  <Text style={[styles.infoLabel, textColor]}>Contact Number</Text>
+                  <Text style={[styles.infoValue, textColor]}>{account.phone}</Text>
                 </View>
               </View>
 
@@ -181,12 +166,12 @@ export default function CashierAccountScreen() {
                   <MaterialCommunityIcons
                     name="calendar-month-outline"
                     size={44}
-                    color={COLORS.nearBlack}
+                    color={iconColor}
                   />
                 </View>
                 <View style={styles.textCol}>
-                  <Text style={styles.infoLabel}>Employment Date</Text>
-                  <Text style={styles.infoValue}>{account.formattedDate}</Text>
+                  <Text style={[styles.infoLabel, textColor]}>Employment Date</Text>
+                  <Text style={[styles.infoValue, textColor]}>{account.formattedDate}</Text>
                 </View>
               </View>
             </View>
@@ -197,7 +182,7 @@ export default function CashierAccountScreen() {
             <TouchableOpacity
               style={styles.editPasswordBtn}
               activeOpacity={0.85}
-              onPress={() => router.push('/dashboard module/edit-password' as any)}
+              onPress={() => router.push('/dashboard module/edit-password' as Href)}
             >
               <Text style={styles.editPasswordBtnText}>Edit Password</Text>
             </TouchableOpacity>
@@ -205,94 +190,13 @@ export default function CashierAccountScreen() {
         </View>
       </ScrollView>
 
-      {/* Side Drawer Modal */}
-      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
-        <View style={styles.drawerOverlay}>
-          <TouchableOpacity style={styles.drawerBackdrop} activeOpacity={1} onPress={closeMenu} />
-
-          <Animated.View
-            style={[
-              styles.drawerContainer,
-              { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] },
-            ]}
-          >
-            <View style={styles.drawerTopHeader}>
-              <TouchableOpacity
-                onPress={closeMenu}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Feather name="x" size={28} color={COLORS.nearBlack} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.drawerWhiteList}>
-              <TouchableOpacity
-                style={[styles.drawerRow, styles.drawerRowBorder]}
-                onPress={() => setDarkMode(!darkMode)}
-              >
-                <View style={styles.drawerIconCol}>
-                  <MaterialCommunityIcons
-                    name={darkMode ? 'toggle-switch' : 'toggle-switch-off-outline'}
-                    size={42}
-                    color={COLORS.red}
-                  />
-                </View>
-                <Text style={styles.drawerRowText}>Switch to Dark Mode</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerRow} onPress={closeMenu}>
-                <View style={styles.drawerIconCol}>
-                  <Ionicons name="person-outline" size={40} color={COLORS.red} />
-                </View>
-                <Text style={styles.drawerRowText}>Account Information</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={() => {
-                closeMenu();
-                setTimeout(() => setLogoutModalVisible(true), 220);
-              }}
-            >
-              <Text style={styles.logoutBtnText}>Log out</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Logout Confirmation Dialog matching image_b90aa0.png */}
-      <Modal
-        visible={logoutModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLogoutModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIconCircle}>
-              <MaterialCommunityIcons name="logout" size={46} color={COLORS.red} />
-            </View>
-
-            <Text style={styles.modalPrompt}>
-              Are you sure you want to log{'\n'}out your account?
-            </Text>
-
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setLogoutModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmLogout}>
-                <Text style={styles.confirmBtnText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role="cashier"
+        darkMode={darkMode}
+        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+      />
     </SafeAreaView>
   );
 }
@@ -391,142 +295,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   editPasswordBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.white,
-    fontSize: 12.5,
-  },
-  /* Drawer Styles */
-  drawerOverlay: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'transparent',
-  },
-  drawerBackdrop: {
-    flex: 1,
-  },
-  drawerContainer: {
-    backgroundColor: COLORS.drawerCream,
-    justifyContent: 'flex-start',
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: -2, height: 0 },
-  },
-  drawerTopHeader: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 24,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    alignItems: 'flex-end',
-  },
-  drawerWhiteList: {
-    backgroundColor: '#FFFDF9',
-    width: '100%',
-  },
-  drawerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-  },
-  drawerRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3EFE6',
-  },
-  drawerIconCol: {
-    width: 52,
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  drawerRowText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 12.5,
-    color: COLORS.nearBlack,
-  },
-  logoutBtn: {
-    marginTop: 28,
-    marginHorizontal: 38,
-    height: 44,
-    backgroundColor: COLORS.red,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.white,
-    fontSize: 13.5,
-  },
-  /* Logout Confirmation Modal matching image_b90aa0.png */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 16, 21, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: COLORS.modalCream,
-    borderRadius: 34,
-    paddingVertical: 32,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  modalIconCircle: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    borderWidth: 1,
-    borderColor: COLORS.nearBlack,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    backgroundColor: COLORS.white,
-  },
-  modalPrompt: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 15,
-    color: COLORS.red,
-    textAlign: 'center',
-    lineHeight: 23,
-    marginBottom: 26,
-  },
-  modalBtnRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.red,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.red,
-    fontSize: 12.5,
-  },
-  confirmBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: COLORS.red,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  confirmBtnText: {
     fontFamily: 'Poppins_700Bold',
     color: COLORS.white,
     fontSize: 12.5,

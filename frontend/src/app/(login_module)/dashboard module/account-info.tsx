@@ -26,7 +26,7 @@ import {
 import axios from 'axios';
 import { getToken, clearToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36'; // Update with your local IP if needed
+const YOUR_PC_IP = '192.168.1.40'; // Update with your local IP if needed
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -155,7 +155,7 @@ export default function AccountInfoScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+      <StatusBar barStyle="dark-content"  />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}

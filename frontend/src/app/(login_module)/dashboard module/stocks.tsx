@@ -1,26 +1,32 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+// stocks.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
   ActivityIndicator,
-  Modal,
-  Animated,
-  useWindowDimensions,
   Platform,
   StatusBar,
   RefreshControl,
 } from 'react-native';
-import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import { getToken, clearToken } from '../Role';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  getUserRole,
+  setGlobalUserRole,
+  subscribeAppTheme,
+} from '../Role';
+import RoleSideDrawer from '../RoleSideDrawer';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -53,15 +59,24 @@ const DEFAULT_DISPLAY_ITEMS = [
 
 export default function StocksScreen() {
   const router = useRouter();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
 
   const [stocks, setStocks] = useState<StockCardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const [menuVisible, setMenuVisible] = useState(false);
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+
+  const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
+  const [darkMode, setDarkMode] = useState(getDarkMode());
+
+  const isCashierDark = role === 'cashier' && darkMode;
+  const iconColor = isCashierDark ? '#FFFFFF' : '#111827';
+
+  useEffect(() => {
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+      setRole(getUserRole());
+    });
+  }, []);
 
   const loadStocks = useCallback(async () => {
     try {
@@ -71,9 +86,23 @@ export default function StocksScreen() {
         return;
       }
 
-      const res = await axios.get(`${API_URL}/protected/stocks`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [accRes, res] = await Promise.all([
+        axios
+          .get(`${API_URL}/protected/account`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          .catch(() => null),
+        axios.get(`${API_URL}/protected/stocks`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (accRes?.data?.account?.role) {
+        const fetchedRole =
+          accRes.data.account.role.toLowerCase() === 'manager' ? 'manager' : 'cashier';
+        setRole(fetchedRole);
+        setGlobalUserRole(fetchedRole);
+      }
 
       const dbStocks: any[] = res.data.stocks || [];
       const mapped = DEFAULT_DISPLAY_ITEMS.map((itemName, idx) => {
@@ -89,7 +118,7 @@ export default function StocksScreen() {
       });
 
       setStocks(mapped);
-    } catch (err) {
+    } catch {
       setStocks(
         DEFAULT_DISPLAY_ITEMS.map((name, idx) => ({
           id: idx + 1,
@@ -113,37 +142,12 @@ export default function StocksScreen() {
     setRefreshing(false);
   }, [loadStocks]);
 
-  const openMenu = () => {
-    setMenuVisible(true);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeMenu = () => {
-    Animated.timing(slideAnim, {
-      toValue: DRAWER_WIDTH,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => setMenuVisible(false));
-  };
-
-  const navigateFromDrawer = (path: string) => {
-    closeMenu();
-    router.push(path as any);
-  };
-
-  const handleLogout = async () => {
-    await clearToken();
-    closeMenu();
-    router.replace('/');
-  };
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView
+      style={[styles.safeArea, isCashierDark && { backgroundColor: '#181920' }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -154,24 +158,42 @@ export default function StocksScreen() {
         <View style={styles.container}>
           {/* Top Navigation Bar */}
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="chevron-back" size={30} color="#111827" />
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="chevron-back" size={30} color={iconColor} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={openMenu} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="menu" size={32} color="#111827" />
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="menu" size={32} color={iconColor} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.pageTitle}>Stocks</Text>
+          <Text style={[styles.pageTitle, { color: iconColor }]}>Stocks</Text>
 
           {loading ? (
             <ActivityIndicator size="large" color="#e60000" style={{ marginTop: 40 }} />
           ) : (
             <View style={styles.grid}>
               {stocks.map((item) => (
-                <View key={item.id} style={styles.stockCard}>
-                  <View style={styles.imageWrapper}>
-                    <Image source={{ uri: item.image }} style={styles.stockImage} resizeMode="contain" />
+                <View
+                  key={item.id}
+                  style={[styles.stockCard, isCashierDark && { backgroundColor: '#22242E' }]}
+                >
+                  <View
+                    style={[
+                      styles.imageWrapper,
+                      isCashierDark && { backgroundColor: '#22242E' },
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: item.image }}
+                      style={styles.stockImage}
+                      resizeMode="contain"
+                    />
                   </View>
                   <View style={styles.cardFooter}>
                     <Text style={styles.stockName} numberOfLines={1}>
@@ -186,65 +208,13 @@ export default function StocksScreen() {
         </View>
       </ScrollView>
 
-      {/* Side Drawer Modal */}
-      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
-        <View style={styles.drawerOverlay}>
-          <TouchableOpacity style={styles.drawerBackdrop} activeOpacity={1} onPress={closeMenu} />
-          <Animated.View style={[styles.drawerContainer, { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] }]}>
-            <TouchableOpacity style={styles.drawerCloseBtn} onPress={closeMenu}>
-              <Feather name="x" size={28} color="#1f2937" />
-            </TouchableOpacity>
-
-            <View style={styles.drawerMenuWrapper}>
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="person-outline" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Account Information</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateFromDrawer('/dashboard module/stock-alert')}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="notifications" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Stock Alert</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerItem} onPress={closeMenu}>
-                <View style={styles.drawerIconBox}>
-                  <MaterialCommunityIcons name="tag-multiple" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Manage Price</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateFromDrawer('/dashboard module/stocks')}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="eye-outline" size={42} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Live Stock Count</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateFromDrawer('/dashboard module/record-waste')}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="document-text-outline" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Record Waste</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateFromDrawer('/dashboard module/waste-history')}>
-                <View style={styles.drawerIconBox}>
-                  <Ionicons name="trash-outline" size={40} color="#ef0000" />
-                </View>
-                <Text style={styles.drawerItemText}>Waste History</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-              <Text style={styles.logoutBtnText}>Log out</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+      />
     </SafeAreaView>
   );
 }
@@ -323,62 +293,5 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '800',
     color: '#111827',
-  },
-  drawerOverlay: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'transparent',
-  },
-  drawerBackdrop: {
-    flex: 1,
-  },
-  drawerContainer: {
-    backgroundColor: '#fdf8ea',
-    paddingTop: Platform.OS === 'ios' ? 50 : 24,
-    paddingHorizontal: 22,
-    paddingBottom: 32,
-    justifyContent: 'flex-start',
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: -2, height: 0 },
-  },
-  drawerCloseBtn: {
-    alignSelf: 'flex-end',
-    padding: 4,
-    marginBottom: 24,
-  },
-  drawerMenuWrapper: {
-    gap: 28,
-    marginTop: 8,
-  },
-  drawerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  drawerIconBox: {
-    width: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  drawerItemText: {
-    fontSize: 13.5,
-    color: '#1f2937',
-  },
-  logoutBtn: {
-    marginTop: 42,
-    marginHorizontal: 18,
-    height: 44,
-    backgroundColor: '#ef0000',
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800',
   },
 });

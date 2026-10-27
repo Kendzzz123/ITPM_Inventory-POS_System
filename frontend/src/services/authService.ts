@@ -6,6 +6,7 @@
  */
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { resetAppState, setGlobalUserRole } from '@/store/appState';
 
 /** Storage key for the JWT token */
 const TOKEN_KEY = 'auth_token';
@@ -59,6 +60,7 @@ export async function getToken(): Promise<string | null> {
  * router.replace('/');
  */
 export async function clearToken(): Promise<void> {
+  resetAppState();
   try {
     if (Platform.OS === 'web') {
       localStorage.removeItem(TOKEN_KEY);
@@ -84,6 +86,27 @@ export async function getAuthHeaders(): Promise<{ Authorization: string } | null
   const token = await getToken();
   if (!token) return null;
   return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Reads the role stored inside the saved JWT (no network call) and puts it in
+ * the app store. Called on app start so the side menu shows the right items
+ * after a reload, not just right after login.
+ * @returns the role, or null when there is no valid token
+ */
+export async function restoreRoleFromToken(): Promise<string | null> {
+  const token = await getToken();
+  if (!token) return null;
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const data = JSON.parse(atob(padded)) as { role?: string; exp?: number };
+    if (data.exp && data.exp * 1000 < Date.now()) return null;
+    if (data.role) setGlobalUserRole(data.role);
+    return data.role ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // TEST: saveToken stores and getToken retrieves the same value

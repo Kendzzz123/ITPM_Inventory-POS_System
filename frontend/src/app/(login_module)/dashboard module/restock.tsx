@@ -4,7 +4,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   Modal,
   Platform,
@@ -12,12 +11,13 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import axios from 'axios';
 import { getToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -68,7 +68,7 @@ export default function RestockScreen() {
       );
       setConfirmVisible(false);
       Alert.alert('Success', `${selectedItem} restocked (+${quantity})!`, [
-        { text: 'OK', onPress: () => router.push('/dashboard module/stocks' as any) },
+        { text: 'OK', onPress: () => router.push('/dashboard module/stocks' as Href) },
       ]);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.message || 'Could not restock item.');
@@ -78,8 +78,8 @@ export default function RestockScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>
@@ -146,7 +146,7 @@ export default function RestockScreen() {
         </View>
       </View>
 
-      {/* Confirmation Modal matching image_da5bdb.png */}
+      {/* Confirmation Modal */}
       <Modal
         visible={confirmVisible}
         transparent

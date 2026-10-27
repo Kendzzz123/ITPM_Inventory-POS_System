@@ -4,7 +4,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   Modal,
   Platform,
@@ -12,12 +11,13 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 import { getToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -55,8 +55,8 @@ export default function SuspendStaffScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>
@@ -106,7 +106,7 @@ export default function SuspendStaffScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Confirmation Modal matching image_03c0e4.png */}
+      {/* Confirmation Modal */}
       <Modal
         visible={confirmVisible}
         transparent

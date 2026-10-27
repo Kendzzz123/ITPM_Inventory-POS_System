@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+// dashboard module/edit-password.tsx
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   Platform,
   StatusBar,
@@ -14,6 +14,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
@@ -24,9 +25,16 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import axios from 'axios';
-import { getToken } from '../Role';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  getUserRole,
+  subscribeAppTheme,
+} from '../Role';
+import RoleSideDrawer from '../RoleSideDrawer';
 
-const YOUR_PC_IP = '192.168.1.36'; // Update with your local IP if needed
+const YOUR_PC_IP = '192.168.1.40'; // Update with your local IP if needed
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -40,6 +48,8 @@ const COLORS = {
   modalCream: '#FDFBF0', // Confirmation dialog background
   white: '#FFFFFF',      // Input fields, cards, text on red buttons
   nearBlack: '#0F1015',  // Titles, labels, and body text
+  darkBg: '#181920',
+  darkCard: '#22242E',
 };
 
 export default function EditPasswordScreen() {
@@ -51,6 +61,22 @@ export default function EditPasswordScreen() {
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
+
+  // Role, Dark Mode & Side Drawer State
+  const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
+  const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
+  const [menuVisible, setMenuVisible] = useState<boolean>(false);
+
+  const isCashierDark = role === 'cashier' && darkMode;
+  const iconColor = isCashierDark ? COLORS.white : COLORS.nearBlack;
+  const textColor = { color: iconColor };
+
+  useEffect(() => {
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+      setRole(getUserRole());
+    });
+  }, []);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -92,15 +118,18 @@ export default function EditPasswordScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+    <SafeAreaView
+      style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -111,30 +140,51 @@ export default function EditPasswordScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.container}>
-            {/* Top Bar (Back Arrow on Left) */}
+            {/* Top Bar (Back Arrow on Left, Menu on Right) */}
             <View style={styles.topBar}>
               <TouchableOpacity
                 onPress={() => router.back()}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />
+                <Ionicons name="chevron-back" size={30} color={iconColor} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setMenuVisible(true)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="menu" size={32} color={iconColor} />
               </TouchableOpacity>
             </View>
 
             {/* Top Circular Open-Padlock Icon */}
-            <View style={styles.lockCircle}>
+            <View
+              style={[
+                styles.lockCircle,
+                isCashierDark && {
+                  backgroundColor: COLORS.darkCard,
+                  borderColor: COLORS.white,
+                },
+              ]}
+            >
               <MaterialCommunityIcons name="lock-open" size={64} color={COLORS.red} />
             </View>
 
-            <Text style={styles.pageTitle}>Edit Password</Text>
-            <Text style={styles.subtitle}>Kindly enter your new password.</Text>
+            <Text style={[styles.pageTitle, textColor]}>Edit Password</Text>
+            <Text style={[styles.subtitle, textColor]}>Kindly enter your new password.</Text>
 
             {/* Password Input Fields */}
             <View style={styles.formSection}>
               <View style={styles.fieldGroup}>
-                <Text style={styles.label}>New Password</Text>
+                <Text style={[styles.label, textColor]}>New Password</Text>
                 <TextInput
-                  style={styles.inputBox}
+                  style={[
+                    styles.inputBox,
+                    isCashierDark && {
+                      backgroundColor: COLORS.darkCard,
+                      color: COLORS.white,
+                    },
+                  ]}
                   value={newPassword}
                   onChangeText={setNewPassword}
                   secureTextEntry
@@ -144,9 +194,15 @@ export default function EditPasswordScreen() {
               </View>
 
               <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Confirm New Password</Text>
+                <Text style={[styles.label, textColor]}>Confirm New Password</Text>
                 <TextInput
-                  style={styles.inputBox}
+                  style={[
+                    styles.inputBox,
+                    isCashierDark && {
+                      backgroundColor: COLORS.darkCard,
+                      color: COLORS.white,
+                    },
+                  ]}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
@@ -168,7 +224,7 @@ export default function EditPasswordScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Change Password Confirmation Dialog matching image_b90ac0.png */}
+      {/* Change Password Confirmation Dialog */}
       <Modal
         visible={confirmModalVisible}
         transparent
@@ -176,7 +232,12 @@ export default function EditPasswordScreen() {
         onRequestClose={() => setConfirmModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              isCashierDark && { backgroundColor: COLORS.darkCard },
+            ]}
+          >
             {/* Closed Padlock Icon in Circle */}
             <View style={styles.modalIconCircle}>
               <MaterialCommunityIcons name="lock" size={50} color={COLORS.red} />
@@ -210,6 +271,15 @@ export default function EditPasswordScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Role-Aware Side Menu Drawer */}
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+      />
     </SafeAreaView>
   );
 }
@@ -238,7 +308,9 @@ const styles = StyleSheet.create({
   },
   topBar: {
     width: '100%',
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: Platform.OS === 'android' ? 8 : 0,
     marginBottom: 22,
   },
@@ -307,7 +379,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 15,
   },
-  /* Confirmation Dialog Styles matching image_b90ac0.png */
+  /* Confirmation Dialog Styles */
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 16, 21, 0.25)',

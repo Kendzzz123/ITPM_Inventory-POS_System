@@ -1,3 +1,4 @@
+// pos.tsx
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
@@ -5,15 +6,15 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
   Platform,
   StatusBar,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -22,9 +23,16 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import axios from 'axios';
-import { getToken } from '../Role';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  getUserRole,
+  subscribeAppTheme,
+} from '../Role';
+import RoleSideDrawer from '../RoleSideDrawer';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -36,6 +44,8 @@ const COLORS = {
   cream: '#FFFDF5',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
+  darkBg: '#181920',
+  darkCard: '#22242E',
 };
 
 type PosMenuItem = {
@@ -80,11 +90,21 @@ export default function PosScreen() {
   });
 
   const [menu, setMenu] = useState<PosMenuItem[]>(DEFAULT_POS_MENU);
-  const [cart, setCart] = useState<CartItem[]>([
-    { ...DEFAULT_POS_MENU[0], qty: 2 },
-    { ...DEFAULT_POS_MENU[1], qty: 2 },
-    { ...DEFAULT_POS_MENU[2], qty: 2 },
-  ]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
+  const [darkMode, setDarkMode] = useState(getDarkMode());
+
+  const isCashierDark = role === 'cashier' && darkMode;
+  const textColor = { color: isCashierDark ? COLORS.white : COLORS.nearBlack };
+
+  useEffect(() => {
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+      setRole(getUserRole());
+    });
+  }, []);
 
   const loadMenu = useCallback(async () => {
     try {
@@ -140,25 +160,28 @@ export default function PosScreen() {
 
     const payload = cart.map((c) => ({ item_id: c.id, qty: c.qty }));
     router.push({
-      pathname: '/dashboard module/pos-payment' as any,
+      pathname: '/dashboard module/pos-payment' as Href,
       params: {
         total: String(totalAmount),
         itemsJson: JSON.stringify(payload),
       },
-    });
+    } as any);
   };
 
   if (!fontsLoaded) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+    <SafeAreaView
+      style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
@@ -168,17 +191,25 @@ export default function PosScreen() {
               onPress={() => router.back()}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />
+              <Ionicons
+                name="chevron-back"
+                size={30}
+                color={isCashierDark ? COLORS.white : COLORS.nearBlack}
+              />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => setMenuVisible(true)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
+              <Ionicons
+                name="menu"
+                size={32}
+                color={isCashierDark ? COLORS.white : COLORS.nearBlack}
+              />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.pageTitle}>Point-of-Sale</Text>
+          <Text style={[styles.pageTitle, textColor]}>Point-of-Sale</Text>
 
           {/* 3-Column Item Grid */}
           <View style={styles.menuGrid}>
@@ -187,7 +218,11 @@ export default function PosScreen() {
               return (
                 <TouchableOpacity
                   key={item.id}
-                  style={[styles.menuCard, isLastCentered && styles.centeredCard]}
+                  style={[
+                    styles.menuCard,
+                    isLastCentered && styles.centeredCard,
+                    isCashierDark && { backgroundColor: COLORS.darkCard, borderColor: '#374151' },
+                  ]}
                   activeOpacity={0.85}
                   onPress={() => addToCart(item)}
                 >
@@ -195,7 +230,7 @@ export default function PosScreen() {
                     <Image source={{ uri: item.image }} style={styles.cardImg} resizeMode="contain" />
                   </View>
                   <View style={styles.cardBottomRow}>
-                    <Text style={styles.cardItemName} numberOfLines={2}>
+                    <Text style={[styles.cardItemName, textColor]} numberOfLines={2}>
                       {item.name}
                     </Text>
                     <View style={styles.plusCircle}>
@@ -209,17 +244,24 @@ export default function PosScreen() {
 
           {/* Order Header Row */}
           <View style={styles.orderHeaderRow}>
-            <Text style={styles.orderTitle}>Order</Text>
+            <Text style={[styles.orderTitle, textColor]}>Order</Text>
             <TouchableOpacity onPress={clearCart}>
               <Text style={styles.clearAllText}>Clear All</Text>
             </TouchableOpacity>
           </View>
 
           {/* Order Lines */}
-          <View style={styles.orderListCard}>
+          <View
+            style={[
+              styles.orderListCard,
+              isCashierDark && { backgroundColor: COLORS.darkCard },
+            ]}
+          >
             {cart.length === 0 ? (
               <View style={styles.emptyOrderBox}>
-                <Text style={styles.emptyOrderText}>Tap any menu item above to add to order.</Text>
+                <Text style={[styles.emptyOrderText, isCashierDark && { color: '#9CA3AF' }]}>
+                  Tap any menu item above to add to order.
+                </Text>
               </View>
             ) : (
               cart.map((item, idx) => (
@@ -228,12 +270,13 @@ export default function PosScreen() {
                   style={[
                     styles.orderRow,
                     idx !== cart.length - 1 && styles.orderRowBorder,
+                    isCashierDark && { borderBottomColor: '#2E3240' },
                   ]}
                 >
-                  <Text style={styles.orderItemName} numberOfLines={2}>
+                  <Text style={[styles.orderItemName, textColor]} numberOfLines={2}>
                     {item.name}
                   </Text>
-                  <Text style={styles.orderUnitPrice}>{item.price}</Text>
+                  <Text style={[styles.orderUnitPrice, textColor]}>{item.price}</Text>
                   <Text style={styles.orderTimes}>x</Text>
 
                   {/* Quantity Stepper */}
@@ -244,7 +287,7 @@ export default function PosScreen() {
                     >
                       <Feather name="minus" size={12} color={COLORS.white} />
                     </TouchableOpacity>
-                    <Text style={styles.stepQtyText}>{item.qty}</Text>
+                    <Text style={[styles.stepQtyText, textColor]}>{item.qty}</Text>
                     <TouchableOpacity
                       style={styles.stepCircle}
                       onPress={() => updateQty(item.id, 1)}
@@ -253,7 +296,7 @@ export default function PosScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={styles.orderSubtotal}>
+                  <Text style={[styles.orderSubtotal, textColor]}>
                     {(item.price * item.qty).toLocaleString()}
                   </Text>
                 </View>
@@ -271,9 +314,7 @@ export default function PosScreen() {
               <Text style={styles.totalLabel}>Total:</Text>
               <Text style={styles.itemsCountText}>{totalItems} items</Text>
             </View>
-            <Text style={styles.grandTotalValue}>
-              ₱ {totalAmount.toLocaleString()}
-            </Text>
+            <Text style={styles.grandTotalValue}>₱ {totalAmount.toLocaleString()}</Text>
           </View>
 
           <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmOrder}>
@@ -281,6 +322,14 @@ export default function PosScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+      />
     </SafeAreaView>
   );
 }
@@ -326,7 +375,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    rowGap: 10,
+    rowGap: 16,
   },
   menuCard: {
     width: '31.5%',
@@ -334,7 +383,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#4B5563',
-    padding: 8,
+    padding: 10,
+    marginLeft: 5,
     justifyContent: 'space-between',
   },
   centeredCard: {

@@ -5,19 +5,19 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
   ActivityIndicator,
   Platform,
   StatusBar,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import axios from 'axios';
 import { getToken } from '../Role';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -94,18 +94,18 @@ export default function ManagePriceScreen() {
 
   const handleEditPress = (item: MenuItem) => {
     router.push({
-      pathname: '/dashboard module/edit-price' as any,
+      pathname: '/dashboard module/edit-price' as Href,
       params: {
         id: String(item.id),
         name: item.name,
         price: String(item.price),
       },
-    });
+    } as any);
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -213,6 +213,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: 14,
+    
   },
   card: {
     width: '48.2%',
@@ -221,6 +222,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#4b5563',
     padding: 12,
+    marginLeft: 5,
     justifyContent: 'space-between',
   },
   centeredSingleCard: {

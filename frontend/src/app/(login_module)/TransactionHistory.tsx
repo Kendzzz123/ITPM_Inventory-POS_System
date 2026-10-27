@@ -1,363 +1,745 @@
-import React, { useState } from 'react';
+// TransactionHistory.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   Modal,
   TextInput,
   Alert,
   Platform,
+  StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as FileSystem from 'expo-file-system/legacy';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
+import axios from 'axios';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  getUserRole,
+  setGlobalUserRole,
+  subscribeAppTheme,
+} from './Role';
+import RoleSideDrawer from './RoleSideDrawer';
 
-// Sample data matching your UI design
-const INITIAL_TRANSACTIONS = [
-  { id: '1', date: '01/3/2026', time: '13:15', product: 'Whole Cut Chicken', amount: 580, method: 'Cash' },
-  { id: '2', date: '01/3/2026', time: '13:15', product: 'Half Cut Chicken', amount: 300, method: 'E-wallet' },
-  { id: '3', date: '01/3/2026', time: '13:15', product: 'Liempo Cut', amount: 600, method: 'Cash' },
-  { id: '4', date: '12/31/2025', time: '15:13', product: 'Whole Cut Chicken', amount: 290, method: 'Cash' },
-  { id: '5', date: '12/31/2025', time: '12:45', product: 'Liempo Cut', amount: 600, method: 'E-wallet' },
+const YOUR_PC_IP = '192.168.1.40';
+const API_URL = Platform.select({
+  web: 'http://localhost:3000',
+  default: `http://${YOUR_PC_IP}:3000`,
+});
+
+// 4.1 Color Palette Specification
+const COLORS = {
+  yellow: '#FFC400',
+  red: '#EC0000',
+  cream: '#FFFDF5',
+  sheetCream: '#FDF8EA',
+  modalCream: '#FDFBF0',
+  white: '#FFFFFF',
+  nearBlack: '#0F1015',
+  green: '#3F7D00',
+  darkBg: '#181920',
+  darkCard: '#22242E',
+  darkBorder: '#2E3240',
+};
+
+type TransactionItem = {
+  id: string;
+  date: string;
+  time: string;
+  product: string;
+  amount: number | string;
+  method: string;
+};
+
+const FALLBACK_TRANSACTIONS: TransactionItem[] = [
+  
 ];
 
 export default function TransactionHistoryScreen() {
   const router = useRouter();
 
-  // State
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+  });
+
+  // Role & Dark Mode State
+  const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
+  const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
+
+  const isCashierDark = role === 'cashier' && darkMode;
+  const iconColor = isCashierDark ? COLORS.white : COLORS.nearBlack;
+  const textColor = { color: iconColor };
+
+  useEffect(() => {
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+      setRole(getUserRole());
+    });
+  }, []);
+
+  // Transactions & Loading State
+  const [transactions, setTransactions] = useState<TransactionItem[]>(FALLBACK_TRANSACTIONS);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Export Modal & Success View State
   const [modalVisible, setModalVisible] = useState(false);
   const [exportComplete, setExportComplete] = useState(false);
   const [exportedFilePath, setExportedFilePath] = useState<string | null>(null);
+  const [exportedWbBase64, setExportedWbBase64] = useState<string | null>(null);
+  const [exportedFilename, setExportedFilename] = useState<string>('Transactions.xlsx');
 
-  // Filter selections
-  const [dateFilter, setDateFilter] = useState<'Today' | 'This Week' | 'This Month' | 'Custom'>('Today');
-  const [paymentMethod, setPaymentMethod] = useState<'All' | 'Cash' | 'E-wallet'>('All');
+  // Export Filter Selections
+  const [dateFilter, setDateFilter] = useState<'Today' | 'This Week' | 'This Month' | 'Custom' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'All' | 'Cash' | 'E-wallet' | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Side Drawer State
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  // Load Transactions & User Role from Backend
+  const loadTransactions = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const [accRes, res] = await Promise.all([
+        axios
+          .get(`${API_URL}/protected/account`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          .catch(() => null),
+        axios.get(`${API_URL}/protected/transactions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (accRes?.data?.account?.role) {
+        const fetchedRole =
+          accRes.data.account.role.toLowerCase() === 'manager' ? 'manager' : 'cashier';
+        setRole(fetchedRole);
+        setGlobalUserRole(fetchedRole);
+      }
+
+      if (res.data?.transactions && res.data.transactions.length > 0) {
+        setTransactions(res.data.transactions);
+      } else {
+        setTransactions(FALLBACK_TRANSACTIONS);
+      }
+    } catch {
+      setTransactions(FALLBACK_TRANSACTIONS);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadTransactions();
+    setRefreshing(false);
+  }, [loadTransactions]);
+
+  // Helper to filter rows client-side as a fallback
+  const filterTransactionsLocally = (list: TransactionItem[]) => {
+    return list.filter((tx) => {
+      if (paymentMethod && paymentMethod !== 'All') {
+        if ((tx.method || 'Cash').toLowerCase() !== paymentMethod.toLowerCase()) {
+          return false;
+        }
+      }
+      return true;
+    });
+  };
+
   // Handle Export to Excel (.xlsx)
   const handleExport = async () => {
+    setExporting(true);
     try {
-      // 1. Prepare worksheet data
-      const dataToExport = INITIAL_TRANSACTIONS.map((item) => ({
+      let rowsToExport = transactions;
+
+      try {
+        const token = await getToken();
+        const res = await axios.get(`${API_URL}/protected/transactions`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            dateFilter: dateFilter || undefined,
+            paymentMethod: paymentMethod || undefined,
+            startDate: dateFilter === 'Custom' ? startDate : undefined,
+            endDate: dateFilter === 'Custom' ? endDate : undefined,
+          },
+        });
+        if (res.data?.transactions && res.data.transactions.length > 0) {
+          rowsToExport = res.data.transactions;
+        } else {
+          rowsToExport = filterTransactionsLocally(transactions);
+        }
+      } catch {
+        rowsToExport = filterTransactionsLocally(transactions);
+      }
+
+      if (rowsToExport.length === 0) {
+        rowsToExport = transactions;
+      }
+
+      const dataToExport = rowsToExport.map((item) => ({
         Date: item.date,
         Time: item.time,
-        Product: item.product,
-        'Total Amount (PHP)': item.amount,
-        'Payment Method': item.method,
+        Product: String(item.product).replace(/\n/g, ' '),
+        'Total Amount (PHP)': Number(item.amount),
+        'Payment Method': item.method || 'Cash',
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataToExport);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
 
-      // 2. Generate Base64 binary
-      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-      const filename = `Transactions_${Date.now()}.xlsx`;
-      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+      const filename = `MrLiempo_Transactions_${Date.now()}.xlsx`;
+      setExportedFilename(filename);
 
-      // 3. Save to file system
-      await FileSystem.writeAsStringAsync(fileUri, wbout, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      if (Platform.OS === 'web') {
+        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        setExportedWbBase64(wbout);
+        const link = document.createElement('a');
+        link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${wbout}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setModalVisible(false);
+        setExportComplete(true);
+      } else {
+        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        const file = new File(Paths.document, filename);
+        file.create({ overwrite: true });
+        await file.write(wbout, { encoding: 'base64' });
 
-      setExportedFilePath(fileUri);
-      setModalVisible(false);
-      setExportComplete(true);
+        setExportedFilePath(file.uri);
+        setModalVisible(false);
+        setExportComplete(true);
+      }
     } catch (err: any) {
       Alert.alert('Export Failed', err.message || 'Could not export file.');
+    } finally {
+      setExporting(false);
     }
   };
 
-  // Open or Share file
+  // Open or Share the exported Excel file
   const handleShareOrOpen = async () => {
-    if (!exportedFilePath) return;
-    const canShare = await Sharing.isAvailableAsync();
-    if (canShare) {
-      await Sharing.shareAsync(exportedFilePath, {
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        dialogTitle: 'Exported Transactions',
-        UTI: 'com.microsoft.excel.xlsx',
-      });
-    } else {
-      Alert.alert('Sharing unavailable', 'Sharing is not supported on this platform.');
+    if (Platform.OS === 'web') {
+      if (exportedWbBase64) {
+        const link = document.createElement('a');
+        link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${exportedWbBase64}`;
+        link.download = exportedFilename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      return;
+    }
+
+    if (!exportedFilePath) {
+      Alert.alert('File not found', 'Please export the transactions again.');
+      return;
+    }
+
+    try {
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(exportedFilePath, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Mr. Liempo Transactions',
+          UTI: 'com.microsoft.excel.xlsx',
+        });
+      } else {
+        Alert.alert('Saved', `File saved at: ${exportedFilePath}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not open file.');
     }
   };
 
-  // ---- SUCCESS SCREEN VIEW ----
-  if (exportComplete) {
+  if (!fontsLoaded) {
     return (
-      <View style={styles.successContainer}>
-        {/* Top Navigation */}
-        <View style={styles.topNav}>
-          <Pressable onPress={() => setExportComplete(false)}>
-            <Text style={styles.backChevron}>‹</Text>
-          </Pressable>
-          <Text style={styles.hamburger}>☰</Text>
-        </View>
-
-        <View style={styles.successContent}>
-          <Text style={styles.successTitle}>Export Complete</Text>
-
-          {/* Green Check Circle */}
-          <View style={styles.checkCircle}>
-            <Text style={styles.checkmark}>✓</Text>
-          </View>
-
-          <Text style={styles.savedText}>Saved to your device.</Text>
-
-          <Pressable style={styles.redButton} onPress={handleShareOrOpen}>
-            <Text style={styles.redButtonText}>Open File</Text>
-          </Pressable>
-
-          <Pressable style={styles.outlinedButton} onPress={handleShareOrOpen}>
-            <Text style={styles.outlinedButtonText}>Share</Text>
-          </Pressable>
-
-          <Pressable onPress={() => setExportComplete(false)} style={styles.backLink}>
-            <Text style={styles.backLinkText}>Back to Transaction History</Text>
-          </Pressable>
-        </View>
+      <View style={[styles.loadingCenter, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
+        <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
-  // ---- MAIN TRANSACTION HISTORY VIEW ----
-  return (
-    <View style={styles.container}>
-      {/* Top App Bar */}
-      <View style={styles.topNav}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.backChevron}>‹</Text>
-        </Pressable>
-        <Text style={styles.hamburger}>☰</Text>
-      </View>
+  // ============================================================================
+  // VIEW 1: EXPORT COMPLETE STATUS SCREEN
+  // ============================================================================
+  if (exportComplete) {
+    return (
+      <SafeAreaView
+        style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+        edges={['top', 'bottom']}
+      >
+        <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+        <View style={styles.successWrapper}>
+          {/* Top Navigation */}
+          <View style={styles.topNavPadded}>
+            <TouchableOpacity
+              onPress={() => setExportComplete(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="chevron-back" size={30} color={iconColor} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="menu" size={32} color={iconColor} />
+            </TouchableOpacity>
+          </View>
 
-      <Text style={styles.mainTitle}>Transaction History</Text>
+          {/* Centered Status Content */}
+          <View style={styles.successContent}>
+            <Text style={[styles.successTitle, textColor]}>Export Complete</Text>
 
-      {/* Table Card */}
-      <View style={styles.tableCard}>
-        {/* Header */}
-        <View style={styles.tableHeader}>
-          <Text style={[styles.headerCell, { flex: 1.2 }]}>Date</Text>
-          <Text style={[styles.headerCell, { flex: 1 }]}>Time</Text>
-          <Text style={[styles.headerCell, { flex: 1.5 }]}>Product</Text>
-          <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>Total Amount</Text>
+            <View style={styles.checkCircle}>
+              <Feather name="check" size={86} color={COLORS.green} />
+            </View>
+
+            <Text style={[styles.savedText, textColor]}>Saved to your device.</Text>
+
+            <TouchableOpacity
+              style={styles.openFileBtn}
+              activeOpacity={0.85}
+              onPress={handleShareOrOpen}
+            >
+              <Text style={styles.openFileBtnText}>Open File</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.shareBtn,
+                isCashierDark && { backgroundColor: COLORS.darkCard },
+              ]}
+              activeOpacity={0.8}
+              onPress={handleShareOrOpen}
+            >
+              <Text style={styles.shareBtnText}>Share</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setExportComplete(false)}
+              style={styles.backLinkBtn}
+            >
+              <Text style={styles.backLinkText}>Back to Transaction History</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Rows */}
-        <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={false}>
-          {INITIAL_TRANSACTIONS.map((row) => (
-            <View key={row.id} style={styles.tableRow}>
-              <Text style={[styles.cellText, { flex: 1.2 }]}>{row.date}</Text>
-              <Text style={[styles.cellText, { flex: 1 }]}>{row.time}</Text>
-              <Text style={[styles.cellText, { flex: 1.5 }]}>{row.product}</Text>
-              <Text style={[styles.cellText, { flex: 1.2, textAlign: 'right' }]}>{row.amount}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
+        <RoleSideDrawer
+          visible={menuVisible}
+          onClose={() => setMenuVisible(false)}
+          role={role}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+        />
+      </SafeAreaView>
+    );
+  }
 
-      {/* Export to Excel Trigger Button */}
-      <View style={styles.exportTriggerContainer}>
-        <Pressable style={styles.exportOutlineBtn} onPress={() => setModalVisible(true)}>
-          <Text style={styles.exportOutlineBtnText}>Export to Excel</Text>
-        </Pressable>
-      </View>
+  // ============================================================================
+  // VIEW 2: MAIN TRANSACTION HISTORY SCREEN
+  // ============================================================================
+  return (
+    <SafeAreaView
+      style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
 
-      {/* ---- EXPORT TO EXCEL BOTTOM MODAL ---- */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Export to Excel</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.red]} />
+        }
+      >
+        <View style={styles.mainWrapper}>
+          {/* Top Navigation Bar */}
+          <View style={styles.topNavPadded}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="chevron-back" size={30} color={iconColor} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="menu" size={32} color={iconColor} />
+            </TouchableOpacity>
+          </View>
 
-            {/* Date Section */}
-            <Text style={styles.filterGroupLabel}>Date</Text>
-            <View style={styles.pillRow}>
-              {(['Today', 'This Week', 'This Month', 'Custom'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  style={[styles.pill, dateFilter === option && styles.pillActive]}
-                  onPress={() => setDateFilter(option)}
+          <Text style={[styles.mainTitle, textColor]}>Transaction History</Text>
+
+          {/* Edge-to-Edge Transaction History Table Card */}
+          {loading ? (
+            <ActivityIndicator size="large" color={COLORS.red} style={{ marginVertical: 40 }} />
+          ) : (
+            <View
+              style={[
+                styles.tableCard,
+                isCashierDark && { backgroundColor: COLORS.darkCard },
+              ]}
+            >
+              {/* Brand Yellow Header Row with Red Labels */}
+              <View style={styles.tableHeader}>
+                <Text style={[styles.headerCell, { flex: 1.15 }]}>Date</Text>
+                <Text style={[styles.headerCell, { flex: 0.9 }]}>Time</Text>
+                <Text style={[styles.headerCell, { flex: 1.35 }]}>Product</Text>
+                <Text style={[styles.headerCell, { flex: 1.2 }]}>Total Amount</Text>
+              </View>
+
+              {/* Table Rows */}
+              {transactions.map((row, idx) => (
+                <View
+                  key={row.id || idx}
+                  style={[
+                    styles.tableRow,
+                    isCashierDark && { backgroundColor: COLORS.darkCard },
+                    idx !== transactions.length - 1 && styles.tableRowBorder,
+                    idx !== transactions.length - 1 &&
+                      isCashierDark && { borderBottomColor: COLORS.darkBorder },
+                  ]}
                 >
-                  <Text style={[styles.pillText, dateFilter === option && styles.pillTextActive]}>
-                    {option}
+                  <Text style={[styles.cellText, textColor, { flex: 1.15 }]}>{row.date}</Text>
+                  <Text style={[styles.cellText, textColor, { flex: 0.9 }]}>{row.time}</Text>
+                  <Text style={[styles.cellText, textColor, { flex: 1.35 }]} numberOfLines={2}>
+                    {row.product}
                   </Text>
-                </Pressable>
+                  <Text style={[styles.cellText, textColor, { flex: 1.2 }]}>{row.amount}</Text>
+                </View>
               ))}
             </View>
+          )}
 
-            {/* Custom Date Pickers (Shown when 'Custom' is selected) */}
+          {/* Export to Excel Outlined Trigger Button */}
+          <View style={styles.exportTriggerContainer}>
+            <TouchableOpacity
+              style={[
+                styles.exportOutlineBtn,
+                isCashierDark && { backgroundColor: COLORS.darkCard },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => setModalVisible(true)}
+            >
+              <Text style={styles.exportOutlineBtnText}>Export to Excel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* ======================================================================== */}
+      {/* EXPORT TO EXCEL BOTTOM SHEET MODAL                                       */}
+      {/* ======================================================================== */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setModalVisible(false)}
+          />
+
+          <View
+            style={[
+              styles.modalSheet,
+              isCashierDark && { backgroundColor: COLORS.darkCard },
+            ]}
+          >
+            <Text style={[styles.modalTitle, textColor]}>Export to Excel</Text>
+
+            {/* Date Filter Section */}
+            <Text style={[styles.filterGroupLabel, textColor]}>Date</Text>
+            <View style={styles.pillRow}>
+              {(['Today', 'This Week', 'This Month', 'Custom'] as const).map((option) => {
+                const isSelected = dateFilter === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    activeOpacity={0.8}
+                    style={[styles.pill, isSelected && styles.pillActive]}
+                    onPress={() => setDateFilter(option)}
+                  >
+                    <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>
+                      {option}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Custom Date Range Inputs */}
             {dateFilter === 'Custom' && (
               <View style={styles.customDateRow}>
-                <View style={styles.dateInputBox}>
+                <View
+                  style={[
+                    styles.dateInputBox,
+                    isCashierDark && { backgroundColor: COLORS.darkBg },
+                  ]}
+                >
                   <TextInput
                     placeholder="mm/dd/yyyy"
-                    placeholderTextColor="#9ca3af"
+                    placeholderTextColor="#9CA3AF"
                     value={startDate}
                     onChangeText={setStartDate}
-                    style={styles.dateInput}
+                    style={[styles.dateInput, textColor]}
                   />
-                  <Text style={styles.calendarIcon}>📅</Text>
+                  <MaterialCommunityIcons
+                    name="calendar-month-outline"
+                    size={18}
+                    color="#9CA3AF"
+                  />
                 </View>
-                <Text style={styles.dateSeparator}>—</Text>
-                <View style={styles.dateInputBox}>
+
+                <View style={styles.redDashSeparator} />
+
+                <View
+                  style={[
+                    styles.dateInputBox,
+                    isCashierDark && { backgroundColor: COLORS.darkBg },
+                  ]}
+                >
                   <TextInput
                     placeholder="mm/dd/yyyy"
-                    placeholderTextColor="#9ca3af"
+                    placeholderTextColor="#9CA3AF"
                     value={endDate}
                     onChangeText={setEndDate}
-                    style={styles.dateInput}
+                    style={[styles.dateInput, textColor]}
                   />
-                  <Text style={styles.calendarIcon}>📅</Text>
+                  <MaterialCommunityIcons
+                    name="calendar-month-outline"
+                    size={18}
+                    color="#9CA3AF"
+                  />
                 </View>
               </View>
             )}
 
             {/* Payment Method Section */}
-            <Text style={styles.filterGroupLabel}>Payment Method</Text>
+            <Text style={[styles.filterGroupLabel, textColor, { marginTop: 18 }]}>
+              Payment Method
+            </Text>
             <View style={styles.pillRow}>
-              {(['All', 'Cash', 'E-wallet'] as const).map((method) => (
-                <Pressable
-                  key={method}
-                  style={[styles.pill, paymentMethod === method && styles.pillActive]}
-                  onPress={() => setPaymentMethod(method)}
-                >
-                  <Text style={[styles.pillText, paymentMethod === method && styles.pillTextActive]}>
-                    {method}
-                  </Text>
-                </Pressable>
-              ))}
+              {(['All', 'Cash', 'E-wallet'] as const).map((method) => {
+                const isSelected = paymentMethod === method;
+                return (
+                  <TouchableOpacity
+                    key={method}
+                    activeOpacity={0.8}
+                    style={[styles.pill, isSelected && styles.pillActive]}
+                    onPress={() => setPaymentMethod(method)}
+                  >
+                    <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>
+                      {method}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            {/* Bottom Actions */}
+            {/* Bottom Modal Action Buttons (Cancel & Export) */}
             <View style={styles.modalActionsRow}>
-              <Pressable style={styles.modalCancelBtn} onPress={() => setModalVisible(false)}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                activeOpacity={0.8}
+                onPress={() => setModalVisible(false)}
+                disabled={exporting}
+              >
                 <Text style={styles.modalCancelBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={styles.modalExportBtn} onPress={handleExport}>
-                <Text style={styles.modalExportBtnText}>📥 Export</Text>
-              </Pressable>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalExportBtn}
+                activeOpacity={0.85}
+                onPress={handleExport}
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <View style={styles.exportBtnContent}>
+                    <Feather name="download" size={16} color={COLORS.white} />
+                    <Text style={styles.modalExportBtnText}>Export</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+
+      {/* ROLE-AWARE SIDE DRAWER MENU (Cashier Menu vs Manager Menu) */}
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#fffdf5',
-    paddingHorizontal: 20,
-    paddingTop: 50,
+    backgroundColor: COLORS.cream,
   },
-  topNav: {
+  loadingCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.cream,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  mainWrapper: {
+    width: '100%',
+    maxWidth: 480,
+  },
+  topNavPadded: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    marginTop: Platform.OS === 'android' ? 8 : 0,
     marginBottom: 20,
   },
-  backChevron: {
-    fontSize: 34,
-    color: '#111827',
-    fontWeight: 'bold',
-  },
-  hamburger: {
-    fontSize: 26,
-    color: '#111827',
-  },
   mainTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#111827',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 23,
+    color: COLORS.nearBlack,
     textAlign: 'center',
     marginBottom: 26,
   },
-
-  /* Table styling */
   tableCard: {
-    backgroundColor: '#fffdf5',
-    borderRadius: 16,
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: 'hidden',
   },
   tableHeader: {
-    backgroundColor: '#f6b800',
+    backgroundColor: COLORS.yellow,
     flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
   },
   headerCell: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  tableBody: {
-    maxHeight: 360,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 10,
+    color: COLORS.red,
+    textAlign: 'center',
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    paddingVertical: 18,
+    paddingHorizontal: 12,
     alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  tableRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9F6EE',
   },
   cellText: {
-    fontSize: 12,
-    color: '#374151',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 9.5,
+    color: COLORS.nearBlack,
+    textAlign: 'center',
+    lineHeight: 13,
   },
-
-  /* Main screen export button */
   exportTriggerContainer: {
     alignItems: 'flex-end',
-    marginTop: 24,
+    paddingHorizontal: 18,
+    marginTop: 22,
+    marginBottom: 24,
   },
   exportOutlineBtn: {
-    borderColor: '#c00000',
-    borderWidth: 1.5,
+    borderColor: COLORS.red,
+    borderWidth: 1,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
+    paddingVertical: 9,
+    paddingHorizontal: 26,
+    backgroundColor: COLORS.cream,
   },
   exportOutlineBtnText: {
-    color: '#c00000',
-    fontWeight: '700',
-    fontSize: 14,
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.red,
+    fontSize: 11,
   },
-
-  /* Bottom sheet modal */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: 'rgba(15, 16, 21, 0.35)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#fffdf5',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    backgroundColor: COLORS.sheetCream,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 26,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+    elevation: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -3 },
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 16,
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 20,
+    color: COLORS.nearBlack,
+    marginBottom: 14,
   },
   filterGroupLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 14,
-    marginBottom: 10,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11.5,
+    color: COLORS.nearBlack,
+    marginBottom: 8,
   },
   pillRow: {
     flexDirection: 'row',
@@ -365,166 +747,175 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pill: {
-    borderColor: '#c00000',
-    borderWidth: 1.2,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 18,
+    minWidth: 74,
+    borderColor: COLORS.red,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillActive: {
-    backgroundColor: '#c00000',
+    backgroundColor: COLORS.red,
   },
   pillText: {
-    color: '#c00000',
-    fontWeight: '600',
-    fontSize: 13,
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.red,
+    fontSize: 10.5,
   },
   pillTextActive: {
-    color: '#ffffff',
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
   },
-
-  /* Custom date inputs */
   customDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 14,
     justifyContent: 'space-between',
   },
   dateInputBox: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderColor: '#c00000',
+    borderColor: COLORS.red,
     borderWidth: 1.2,
     borderRadius: 10,
     paddingHorizontal: 10,
-    height: 42,
-    backgroundColor: '#ffffff',
+    height: 38,
+    backgroundColor: COLORS.white,
   },
   dateInput: {
     flex: 1,
-    fontSize: 12,
-    color: '#111827',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 10.5,
+    color: COLORS.nearBlack,
+    paddingVertical: 0,
   },
-  calendarIcon: {
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  dateSeparator: {
+  redDashSeparator: {
+    width: 16,
+    height: 3.5,
+    backgroundColor: COLORS.red,
     marginHorizontal: 8,
-    color: '#c00000',
-    fontWeight: '900',
+    borderRadius: 2,
   },
-
-  /* Modal Actions */
   modalActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginTop: 32,
+    justifyContent: 'center',
+    gap: 14,
+    marginTop: 28,
+    paddingHorizontal: 18,
   },
   modalCancelBtn: {
     flex: 1,
-    borderColor: '#c00000',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 14,
+    height: 44,
+    borderColor: COLORS.red,
+    borderWidth: 1,
+    borderRadius: 10,
     alignItems: 'center',
-    backgroundColor: '#fffdf5',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   modalCancelBtnText: {
-    color: '#c00000',
-    fontWeight: '700',
-    fontSize: 15,
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.red,
+    fontSize: 11,
   },
   modalExportBtn: {
     flex: 1,
-    backgroundColor: '#c00000',
-    borderRadius: 12,
-    paddingVertical: 14,
+    height: 44,
+    backgroundColor: COLORS.red,
+    borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   modalExportBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 15,
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
+    fontSize: 11,
   },
-
-  /* Success View */
-  successContainer: {
+  successWrapper: {
     flex: 1,
-    backgroundColor: '#fffdf5',
-    paddingHorizontal: 24,
-    paddingTop: 50,
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
   },
   successContent: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 60,
+    paddingHorizontal: 38,
+    paddingBottom: 40,
   },
   successTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 40,
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 22,
+    color: COLORS.nearBlack,
+    marginBottom: 28,
+    textAlign: 'center',
   },
   checkCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderWidth: 10,
-    borderColor: '#387c2b',
+    width: 156,
+    height: 156,
+    borderRadius: 78,
+    borderWidth: 12,
+    borderColor: COLORS.green,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-  },
-  checkmark: {
-    fontSize: 64,
-    color: '#387c2b',
-    fontWeight: '900',
+    marginBottom: 26,
   },
   savedText: {
-    fontSize: 16,
-    color: '#1f2937',
-    fontWeight: '500',
-    marginBottom: 40,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12.5,
+    color: COLORS.nearBlack,
+    marginBottom: 38,
+    textAlign: 'center',
   },
-  redButton: {
-    backgroundColor: '#c00000',
+  openFileBtn: {
+    backgroundColor: COLORS.red,
     width: '100%',
-    paddingVertical: 15,
+    maxWidth: 260,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 14,
   },
-  redButtonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 16,
+  openFileBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
+    fontSize: 11.5,
   },
-  outlinedButton: {
-    borderColor: '#c00000',
-    borderWidth: 1.5,
+  shareBtn: {
+    borderColor: COLORS.red,
+    borderWidth: 1,
+    backgroundColor: COLORS.cream,
     width: '100%',
-    paddingVertical: 15,
+    maxWidth: 260,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'center',
+    marginBottom: 18,
   },
-  outlinedButtonText: {
-    color: '#c00000',
-    fontWeight: '700',
-    fontSize: 16,
+  shareBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.red,
+    fontSize: 11.5,
   },
-  backLink: {
-    marginTop: 8,
+  backLinkBtn: {
+    paddingVertical: 4,
   },
   backLinkText: {
-    color: '#c00000',
-    fontSize: 14,
-    fontWeight: '500',
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.red,
+    fontSize: 10.5,
     textDecorationLine: 'underline',
   },
 });

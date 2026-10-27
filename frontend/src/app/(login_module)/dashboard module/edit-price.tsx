@@ -1,23 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   Modal,
+  Animated,
   Platform,
   StatusBar,
   Alert,
   ActivityIndicator,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import axios from 'axios';
-import { getToken } from '../Role';
+import { getToken, clearToken } from '../Role';
+import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_700Bold } from '@expo-google-fonts/poppins';
 
-const YOUR_PC_IP = '192.168.1.36';
+const COLORS = {
+  yellow: '#FFC400',
+  red: '#EC0000',
+  cream: '#FFFDF5',
+  drawerCream: '#FDF8EA',
+  white: '#FFFFFF',
+  nearBlack: '#0F1015',
+};
+
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -32,6 +44,10 @@ const KEYPAD_ROWS = [
 export default function EditPriceScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; name?: string; price?: string }>();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
+
+  const [fontsLoaded] = useFonts({ Poppins_400Regular, Poppins_500Medium, Poppins_700Bold });
 
   const itemId = params.id || '1';
   const itemName = params.name || 'Whole Juicy Chicken';
@@ -40,6 +56,35 @@ export default function EditPriceScreen() {
   const [inputPrice, setInputPrice] = useState<string>('330');
   const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // Drawer state
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+
+  const openMenu = () => {
+    setMenuVisible(true);
+    Animated.timing(slideAnim, { toValue: 0, duration: 280, useNativeDriver: true }).start();
+  };
+
+  const closeMenu = () => {
+    Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 250, useNativeDriver: true }).start(() => {
+      setMenuVisible(false);
+    });
+  };
+
+  const navigateTo = (path: string) => {
+    Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }).start(() => {
+      setMenuVisible(false);
+      router.push(path as Href);
+    });
+  };
+
+  const handleConfirmLogout = async () => {
+    setLogoutModalVisible(false);
+    await clearToken();
+    router.replace('/');
+  };
 
   const handleDigitPress = (digit: string) => {
     setInputPrice((prev) => {
@@ -81,9 +126,17 @@ export default function EditPriceScreen() {
     }
   };
 
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.loadingCenter}>
+        <ActivityIndicator size="large" color={COLORS.red} />
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fffdf5" />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
           {/* Top Bar */}
@@ -95,7 +148,7 @@ export default function EditPriceScreen() {
               <Ionicons name="chevron-back" size={30} color="#111827" />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={openMenu}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Ionicons name="menu" size={32} color="#111827" />
@@ -166,42 +219,110 @@ export default function EditPriceScreen() {
         </View>
       </ScrollView>
 
-      {/* Confirmation Modal matching image_03bd46.png */}
+      {/* Confirmation Modal */}
       <Modal
         visible={confirmVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setConfirmVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <View style={styles.priceModalBackdrop}>
+          <View style={styles.priceModalCard}>
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="tag-multiple" size={44} color="#ef0000" />
             </View>
 
-            <Text style={styles.modalPrompt}>
+            <Text style={styles.priceModalPrompt}>
               Are you sure you want to{'\n'}change the price?
             </Text>
 
-            <View style={styles.modalBtnRow}>
+            <View style={styles.priceModalBtnRow}>
               <TouchableOpacity
-                style={styles.cancelBtn}
+                style={styles.priceCancelBtn}
                 onPress={() => setConfirmVisible(false)}
                 disabled={submitting}
               >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text style={styles.priceCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.confirmBtn}
+                style={styles.priceConfirmBtn}
                 onPress={handleConfirmChange}
                 disabled={submitting}
               >
                 {submitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.confirmBtnText}>Confirm</Text>
+                  <Text style={styles.priceConfirmBtnText}>Confirm</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ───── Side Drawer Modal ───── */}
+      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
+        <View style={styles.drawerOverlay}>
+          <TouchableOpacity style={styles.drawerBackdrop} activeOpacity={1} onPress={closeMenu} />
+          <Animated.View style={[styles.drawerContainer, { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] }]}>
+            <TouchableOpacity style={styles.drawerCloseBtn} onPress={closeMenu} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={28} color={COLORS.nearBlack} />
+            </TouchableOpacity>
+
+            <View style={styles.drawerMenuWrapper}>
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/account-info')}>
+                <View style={styles.drawerIconBox}><Ionicons name="person-outline" size={40} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Account Information</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/stock-alert')}>
+                <View style={styles.drawerIconBox}><Ionicons name="notifications" size={40} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Stock Alert</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/manage-price')}>
+                <View style={styles.drawerIconBox}><MaterialCommunityIcons name="tag-multiple" size={40} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Manage Price</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/stocks')}>
+                <View style={styles.drawerIconBox}><Ionicons name="eye-outline" size={42} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Live Stock Count</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/record-waste')}>
+                <View style={styles.drawerIconBox}><Ionicons name="document-text-outline" size={40} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Record Waste</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/dashboard module/waste-history')}>
+                <View style={styles.drawerIconBox}><Ionicons name="trash-outline" size={40} color={COLORS.nearBlack} /></View>
+                <Text style={styles.drawerItemText}>Waste History</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.logoutBtn} onPress={() => { closeMenu(); setTimeout(() => setLogoutModalVisible(true), 350); }}>
+              <Text style={styles.logoutBtnText}>Log out</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* ───── Logout Confirmation Modal ───── */}
+      <Modal visible={logoutModalVisible} transparent animationType="fade" onRequestClose={() => setLogoutModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconCircle}>
+              <Feather name="log-out" size={40} color={COLORS.red} />
+            </View>
+            <Text style={styles.modalPrompt}>Are you sure you want to{'\n'}log out?</Text>
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setLogoutModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmLogout}>
+                <Text style={styles.confirmBtnText}>Confirm</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -214,6 +335,12 @@ export default function EditPriceScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#fffdf5',
+  },
+  loadingCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#fffdf5',
   },
   scrollContainer: {
@@ -344,14 +471,14 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '800',
   },
-  modalBackdrop: {
+  priceModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  modalCard: {
+  priceModalCard: {
     width: '100%',
     maxWidth: 340,
     backgroundColor: '#fdfbf0',
@@ -372,12 +499,137 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: '#fffdf7',
   },
-  modalPrompt: {
+  priceModalPrompt: {
     fontSize: 16,
     color: '#ef0000',
     textAlign: 'center',
     lineHeight: 23,
     marginBottom: 26,
+  },
+  priceModalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  priceCancelBtn: {
+    flex: 1,
+    height: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ef0000',
+    backgroundColor: '#fffdf7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  priceCancelBtnText: {
+    color: '#ef0000',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  priceConfirmBtn: {
+    flex: 1,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: '#ef0000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  priceConfirmBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  drawerOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  drawerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  drawerContainer: {
+    backgroundColor: COLORS.drawerCream,
+    paddingTop: Platform.OS === 'android' ? 50 : 60,
+    paddingHorizontal: 22,
+    paddingBottom: 34,
+    justifyContent: 'space-between',
+  },
+  drawerCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 18 : 16,
+    right: 18,
+    zIndex: 10,
+  },
+  drawerMenuWrapper: {
+    marginTop: 18,
+    gap: 8,
+  },
+  drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 14,
+  },
+  drawerIconBox: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerItemText: {
+    fontSize: 16,
+    fontFamily: 'Poppins_500Medium',
+    color: COLORS.nearBlack,
+  },
+  logoutBtn: {
+    alignSelf: 'center',
+    backgroundColor: COLORS.red,
+    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 48,
+    marginTop: 18,
+  },
+  logoutBtnText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontFamily: 'Poppins_700Bold',
+    textAlign: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#fdfbf0',
+    borderRadius: 34,
+    paddingVertical: 32,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 1,
+    borderColor: '#374151',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: '#fffdf7',
+  },
+  modalPrompt: {
+    fontSize: 16,
+    color: COLORS.red,
+    textAlign: 'center',
+    lineHeight: 23,
+    marginBottom: 26,
+    fontFamily: 'Poppins_500Medium',
   },
   modalBtnRow: {
     flexDirection: 'row',
@@ -390,27 +642,27 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#ef0000',
+    borderColor: COLORS.red,
     backgroundColor: '#fffdf7',
     justifyContent: 'center',
     alignItems: 'center',
   },
   cancelBtnText: {
-    color: '#ef0000',
+    color: COLORS.red,
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   confirmBtn: {
     flex: 1,
     height: 54,
     borderRadius: 14,
-    backgroundColor: '#ef0000',
+    backgroundColor: COLORS.red,
     justifyContent: 'center',
     alignItems: 'center',
   },
   confirmBtnText: {
-    color: '#ffffff',
+    color: COLORS.white,
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
 });

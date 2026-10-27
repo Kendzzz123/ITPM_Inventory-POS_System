@@ -18,7 +18,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 
 // Change YOUR_PC_IP to your local IPv4 address if testing on a physical phone
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -65,7 +65,7 @@ export default function ForgotPasswordScreen() {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.card}>
           <Pressable onPress={() => router.replace('/')}>
-            <MaterialIcons name="chevron-left" size={50} color="black" />
+            <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
           </Pressable>
 
           <View style={styles.new}>
@@ -122,6 +122,9 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    paddingTop: 40,
+  },
   new: {
     justifyContent: 'center',
     alignItems: 'center',

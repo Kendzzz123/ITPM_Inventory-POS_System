@@ -1,22 +1,20 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+// cashier-dashboard.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
-  Modal,
-  Animated,
-  useWindowDimensions,
   Platform,
   StatusBar,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -26,9 +24,16 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import axios from 'axios';
-import { getToken, clearToken } from '../Role';
+import {
+  getToken,
+  getDarkMode,
+  setGlobalDarkMode,
+  setGlobalUserRole,
+  subscribeAppTheme,
+} from '../Role';
+import RoleSideDrawer from '../RoleSideDrawer';
 
-const YOUR_PC_IP = '192.168.1.36';
+const YOUR_PC_IP = '192.168.1.40';
 const API_URL = Platform.select({
   web: 'http://localhost:3000',
   default: `http://${YOUR_PC_IP}:3000`,
@@ -38,15 +43,14 @@ const COLORS = {
   yellow: '#FFC400',
   red: '#EC0000',
   cream: '#FFFDF5',
-  drawerCream: '#FDE8AA',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
+  darkBg: '#181920',
+  darkCard: '#22242E',
 };
 
 export default function CashierDashboardScreen() {
   const router = useRouter();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -60,14 +64,23 @@ export default function CashierDashboardScreen() {
   const [chickenStock, setChickenStock] = useState(100);
   const [porkStock, setPorkStock] = useState(100);
   const [alertMessage, setAlertMessage] = useState('Raw Chicken and Raw Pork are running low!');
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(getDarkMode());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Side Drawer & Logout Modal
   const [menuVisible, setMenuVisible] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+
+  const textColor = { color: darkMode ? COLORS.white : COLORS.nearBlack };
+
+  useEffect(() => {
+    setGlobalUserRole('cashier');
+    return subscribeAppTheme(() => {
+      setDarkMode(getDarkMode());
+    });
+  }, []);
+
+  const toggleDarkMode = () => {
+    setGlobalDarkMode(!darkMode);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -121,45 +134,20 @@ export default function CashierDashboardScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  const openMenu = () => {
-    setMenuVisible(true);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeMenu = () => {
-    Animated.timing(slideAnim, {
-      toValue: DRAWER_WIDTH,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => setMenuVisible(false));
-  };
-
-  const navigateTo = (path: string) => {
-    closeMenu();
-    router.push(path as any);
-  };
-
-  const handleConfirmLogout = async () => {
-    setLogoutModalVisible(false);
-    await clearToken();
-    router.replace('/');
-  };
-
   if (!fontsLoaded || loading) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, darkMode && { backgroundColor: COLORS.darkBg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, darkMode && { backgroundColor: '#181920' }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+    <SafeAreaView
+      style={[styles.safeArea, darkMode && { backgroundColor: COLORS.darkBg }]}
+      edges={['top', 'bottom']}
+    >
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -171,10 +159,14 @@ export default function CashierDashboardScreen() {
           {/* Top Hamburger Icon */}
           <View style={styles.topRow}>
             <TouchableOpacity
-              onPress={openMenu}
+              onPress={() => setMenuVisible(true)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="menu" size={34} color={COLORS.nearBlack} />
+              <Ionicons
+                name="menu"
+                size={34}
+                color={darkMode ? COLORS.white : COLORS.nearBlack}
+              />
             </TouchableOpacity>
           </View>
 
@@ -184,19 +176,18 @@ export default function CashierDashboardScreen() {
               <Ionicons name="person-outline" size={44} color="#9e7b08" />
             </View>
             <View style={styles.welcomeCol}>
-              <Text style={styles.welcomeLabel}>Welcome,</Text>
-              <Text style={styles.userName} numberOfLines={1}>
+              <Text style={[styles.welcomeLabel, textColor]}>Welcome,</Text>
+              <Text style={[styles.userName, textColor]} numberOfLines={1}>
                 {userName}
               </Text>
             </View>
           </View>
 
           {/* Inventory Section */}
-          <Text style={styles.sectionTitle}>Inventory</Text>
+          <Text style={[styles.sectionTitle, textColor]}>Inventory</Text>
 
           <View style={styles.inventoryGrid}>
-            {/* Raw Chicken Card */}
-            <View style={styles.stockCard}>
+            <View style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}>
               <View style={styles.imageArea}>
                 <Image
                   source={{
@@ -212,8 +203,7 @@ export default function CashierDashboardScreen() {
               </View>
             </View>
 
-            {/* Raw Pork Card */}
-            <View style={styles.stockCard}>
+            <View style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}>
               <View style={styles.imageArea}>
                 <Image
                   source={{
@@ -232,12 +222,15 @@ export default function CashierDashboardScreen() {
 
           {/* Warning Banner */}
           <TouchableOpacity
-            style={styles.warningBanner}
+            style={[styles.warningBanner, darkMode && { backgroundColor: COLORS.darkCard }]}
             activeOpacity={0.85}
-            onPress={() => router.push('/dashboard module/stock-alert' as any)}
+            onPress={() => router.push('/dashboard module/stock-alert' as Href)}
           >
-            <Ionicons name="warning" size={24} color="#856806" />
-            <Text style={styles.warningText} numberOfLines={1}>
+            <Ionicons name="warning" size={24} color={COLORS.yellow} />
+            <Text
+              style={[styles.warningText, darkMode && { color: COLORS.yellow }]}
+              numberOfLines={1}
+            >
               {alertMessage}
             </Text>
           </TouchableOpacity>
@@ -245,7 +238,7 @@ export default function CashierDashboardScreen() {
           {/* See All Link */}
           <TouchableOpacity
             style={styles.seeAllBtn}
-            onPress={() => router.push('/dashboard module/stocks' as any)}
+            onPress={() => router.push('/dashboard module/stocks' as Href)}
           >
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
@@ -253,117 +246,33 @@ export default function CashierDashboardScreen() {
           {/* Navigation Action Cards */}
           <View style={styles.actionList}>
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/dashboard module/pos' as any)}
+              style={[styles.actionCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+              onPress={() => router.push('/dashboard module/pos' as Href)}
             >
-              <MaterialCommunityIcons name="cash-register" size={32} color="#9e7b08" />
-              <Text style={styles.actionCardText}>Point-of-Sale</Text>
+              <MaterialCommunityIcons name="cash-register" size={32} color={COLORS.yellow} />
+              <Text style={[styles.actionCardText, textColor]}>Point-of-Sale</Text>
               <Ionicons name="chevron-forward" size={24} color={COLORS.red} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/TransactionHistory' as any)}
+              style={[styles.actionCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+              onPress={() => router.push('/TransactionHistory' as Href)}
             >
-              <Ionicons name="document-text-outline" size={32} color="#9e7b08" />
-              <Text style={styles.actionCardText}>Transaction History</Text>
+              <Ionicons name="document-text-outline" size={32} color={COLORS.yellow} />
+              <Text style={[styles.actionCardText, textColor]}>Transaction History</Text>
               <Ionicons name="chevron-forward" size={24} color={COLORS.red} />
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
 
-      {/* Side Drawer Modal matching image_abc136.png */}
-      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
-        <View style={styles.drawerOverlay}>
-          <TouchableOpacity style={styles.drawerBackdrop} activeOpacity={1} onPress={closeMenu} />
-
-          <Animated.View
-            style={[
-              styles.drawerContainer,
-              { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] },
-            ]}
-          >
-            {/* Top Cream Header with Close X */}
-            <View style={styles.drawerTopHeader}>
-              <TouchableOpacity
-                onPress={closeMenu}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Feather name="x" size={28} color={COLORS.nearBlack} />
-              </TouchableOpacity>
-            </View>
-
-            {/* White Menu Rows */}
-            <View style={styles.drawerWhiteList}>
-              <TouchableOpacity
-                style={[styles.drawerRow, styles.drawerRowBorder]}
-                onPress={() => setDarkMode(!darkMode)}
-              >
-                <View style={styles.drawerIconCol}>
-                  <MaterialCommunityIcons
-                    name={darkMode ? 'toggle-switch' : 'toggle-switch-off-outline'}
-                    size={42}
-                    color={COLORS.red}
-                  />
-                </View>
-                <Text style={styles.drawerRowText}>Switch to Dark Mode</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.drawerRow}
-                onPress={() => navigateTo('/dashboard module/cashier-account')}
-              >
-                <View style={styles.drawerIconCol}>
-                  <Ionicons name="person-outline" size={40} color={COLORS.red} />
-                </View>
-                <Text style={styles.drawerRowText}>Account Information</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Log out Button */}
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={() => {
-                closeMenu();
-                setTimeout(() => setLogoutModalVisible(true), 220);
-              }}
-            >
-              <Text style={styles.logoutBtnText}>Log out</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Logout Confirmation Dialog */}
-      <Modal
-        visible={logoutModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLogoutModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIconCircle}>
-              <MaterialCommunityIcons name="logout" size={46} color={COLORS.red} />
-            </View>
-            <Text style={styles.modalPrompt}>
-              Are you sure you want to{'\n'}log out your account?
-            </Text>
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setLogoutModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmLogout}>
-                <Text style={styles.confirmBtnText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <RoleSideDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        role="cashier"
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+      />
     </SafeAreaView>
   );
 }
@@ -515,137 +424,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular_Italic',
     fontSize: 12,
     color: COLORS.nearBlack,
-  },
-  /* Drawer Styles matching image_abc136.png */
-  drawerOverlay: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'transparent',
-  },
-  drawerBackdrop: {
-    flex: 1,
-  },
-  drawerContainer: {
-    backgroundColor: COLORS.drawerCream,
-    justifyContent: 'flex-start',
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: -2, height: 0 },
-  },
-  drawerTopHeader: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 24,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    alignItems: 'flex-end',
-  },
-  drawerWhiteList: {
-    backgroundColor: '#FFFDF9',
-    width: '100%',
-  },
-  drawerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-  },
-  drawerRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3EFE6',
-  },
-  drawerIconCol: {
-    width: 52,
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  drawerRowText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 12.5,
-    color: COLORS.nearBlack,
-  },
-  logoutBtn: {
-    marginTop: 28,
-    marginHorizontal: 38,
-    height: 44,
-    backgroundColor: COLORS.red,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.white,
-    fontSize: 13.5,
-  },
-  /* Confirmation Modal */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#FDFBF0',
-    borderRadius: 34,
-    paddingVertical: 32,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    elevation: 10,
-  },
-  modalIconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 1,
-    borderColor: COLORS.nearBlack,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    backgroundColor: COLORS.white,
-  },
-  modalPrompt: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 15,
-    color: COLORS.red,
-    textAlign: 'center',
-    lineHeight: 23,
-    marginBottom: 26,
-  },
-  modalBtnRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.red,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.red,
-    fontSize: 12.5,
-  },
-  confirmBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: COLORS.red,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  confirmBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.white,
-    fontSize: 12.5,
   },
 });
