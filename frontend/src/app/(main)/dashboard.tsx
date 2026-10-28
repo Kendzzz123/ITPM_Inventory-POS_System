@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Feather, } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import {
   useFonts,
@@ -393,7 +393,7 @@ export default function DashboardScreen() {
                   style={styles.actionCard}
                   onPress={() => router.push('/record-waste' as Href)}
                 >
-                  <Feather name="eye" size={22} color="#7c6e1d" />
+                  <Ionicons name="document-text-outline" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>Record Waste</Text>
                   <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
                 </TouchableOpacity>
@@ -401,7 +401,7 @@ export default function DashboardScreen() {
                   style={styles.actionCard}
                   onPress={() => router.push('/waste-history' as Href)}
                 >
-                  <Feather name="eye" size={22} color="#7c6e1d" />
+                  <Ionicons name="trash-outline" size={22} color="#7c6e1d" />
                   <Text style={styles.actionCardText}>Waste History</Text>
                   <Ionicons name="chevron-forward" size={20} color={COLORS.red} />
                 </TouchableOpacity>

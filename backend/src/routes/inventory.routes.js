@@ -100,7 +100,7 @@ router.post('/waste', authorizeRoles('manager'), async (req, res) => {
 });
 
 // GET /protected/waste-history
-router.get('/waste-history', async (req, res) => {
+router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
   const [rows] = await pool.query(
     `SELECT CAST(w.Waste_ID AS CHAR) AS id,
             DATE_FORMAT(w.Date, '%m/%d/%Y') AS date,

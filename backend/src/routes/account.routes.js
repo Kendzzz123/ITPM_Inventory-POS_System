@@ -13,7 +13,7 @@ const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const env = require('../config/env');
 const { HttpError } = require('../middleware/errorHandler');
-const { MIN_PASSWORD_LENGTH } = require('./auth.routes');
+const { assertPasswordLength } = require('./auth.routes');
 
 const router = express.Router();
 
@@ -42,14 +42,12 @@ router.get('/account', async (req, res) => {
 router.put('/change-password', async (req, res) => {
   const newPassword = String(req.body?.newPassword || '');
 
-  if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    throw new HttpError(400, `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-  }
+  assertPasswordLength(newPassword);
   if (env.DEFAULT_STAFF_PASSWORDS.includes(newPassword)) {
     throw new HttpError(400, 'Please choose a password different from the default password.');
   }
 
-  const hashed = await bcrypt.hash(newPassword, 10);
+  const hashed = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);
   const [result] = await pool.query('UPDATE Users SET Password_Hash = ? WHERE User_ID = ?', [
     hashed,
     req.user.id,

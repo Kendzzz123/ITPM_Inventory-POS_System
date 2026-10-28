@@ -77,3 +77,31 @@ If that fails, change `FALLBACK_HOST_IP` in `frontend/src/config/apiConfig.ts`
   `backend/src/config/catalog.js`.
 - The backend applies database upgrades by itself on start (`src/config/ensureSchema.js`).
 - Only cash payments are recorded today; the "E-wallet" export filter returns no rows.
+
+## Security
+
+The API is hardened against common attacks (all verified with an automated
+penetration test):
+
+- **SQL injection** — every query uses parameterized values; `:id` params are
+  validated as integers.
+- **Passwords** — bcrypt hashed; 6–72 characters; default passwords must be changed.
+- **Login** — same error and timing for a wrong email as a wrong password
+  (no account enumeration); brute force is rate-limited per IP.
+- **Password reset** — forgot-password and verify-otp give one generic response,
+  so they can't be used to discover which emails are registered; codes are
+  single-use, expire in 10 minutes and lock after 5 wrong tries.
+- **JWT** — tampered, `alg:none`, and wrong-secret tokens are all rejected.
+  Set a long random `JWT_SECRET` (the server warns if it's short).
+- **Roles** — cashiers can't reach manager-only routes (staff, prices, reports,
+  restock, waste) or edit other users.
+- **Hardening** — security headers, no `X-Powered-By`, 100 kb body limit,
+  request flood limiter, and errors never leak server internals.
+
+Still your responsibility when deploying:
+
+- **Use HTTPS in production.** On a plain `http://` LAN, passwords and tokens
+  travel in clear text. Put the API behind HTTPS (e.g. a reverse proxy) for
+  anything beyond local testing.
+- Keep `backend/.env` out of git (already in `.gitignore`); rotate the Gmail
+  app password and `JWT_SECRET` if they were ever committed.

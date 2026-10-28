@@ -284,7 +284,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Platform.OS === 'android' ? 8 : 0,
+    // Space between the status bar and the back / menu icons.
+    marginTop: 24,
     marginBottom: 12,
   },
   pageTitle: {

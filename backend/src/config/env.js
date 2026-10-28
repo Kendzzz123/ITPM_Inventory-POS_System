@@ -44,6 +44,29 @@ const env = {
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean),
+
+  /**
+   * Allowed browser origins for CORS. Comma separated in .env, e.g.
+   * "http://localhost:8081,https://pos.example.com". Leave empty to allow any
+   * origin (the default — a native mobile app doesn't send an Origin header,
+   * so this only matters if you also use the API from a website).
+   */
+  CORS_ORIGINS: (read('CORS_ORIGINS', '') || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
+
+  /** Brute-force limits for the login / OTP endpoints (per IP). */
+  LOGIN_RATE_MAX: Number(read('LOGIN_RATE_MAX', '20')),
+  LOGIN_RATE_WINDOW_MIN: Number(read('LOGIN_RATE_WINDOW_MIN', '15')),
+  OTP_REQUEST_RATE_MAX: Number(read('OTP_REQUEST_RATE_MAX', '5')),
+  OTP_REQUEST_RATE_WINDOW_MIN: Number(read('OTP_REQUEST_RATE_WINDOW_MIN', '15')),
+
+  /** bcrypt work factor for hashing passwords (higher = slower = safer). */
+  BCRYPT_ROUNDS: Number(read('BCRYPT_ROUNDS', '12')),
+
+  /** 'production' hides stack traces from server logs sent to clients. */
+  NODE_ENV: read('NODE_ENV', 'development'),
 };
 
 if (!env.JWT_SECRET) {
@@ -52,7 +75,16 @@ if (!env.JWT_SECRET) {
   throw new Error('JWT_SECRET is missing. Add it to backend/.env (see .env.example).');
 }
 
+if (env.JWT_SECRET.length < 32) {
+  // A short secret is guessable, which lets an attacker forge login tokens.
+  console.warn(
+    '[security] JWT_SECRET is short. Use a long random value, e.g.\n' +
+      '  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"'
+  );
+}
+
 module.exports = env;
 
 // TEST: throws when JWT_SECRET is not set
 // TEST: DEFAULT_STAFF_PASSWORDS splits and trims comma separated values
+// TEST: CORS_ORIGINS parses a comma list and is [] when unset

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import {
   StyleSheet,
   Text,
@@ -23,7 +23,7 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import { clearToken } from '@/services/authService';
-import { getUserRole } from '@/store/appState';
+import { getDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
 import { homeRouteFor } from '@/constants/routes';
 
 const COLORS = {
@@ -33,12 +33,20 @@ const COLORS = {
   drawerCream: '#FDE8AA',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
+  darkBg: '#181920',
 };
 
 export default function TransactionSuccessScreen() {
   const router = useRouter();
 
   const [menuVisible, setMenuVisible] = useState(false);
+
+  // Follow the cashier Dark Mode switch (same rule as the other cashier screens).
+  const darkMode = useSyncExternalStore(subscribeAppTheme, getDarkMode, getDarkMode);
+  const role = useSyncExternalStore(subscribeAppTheme, getUserRole, getUserRole);
+  const isDark = role === 'cashier' && darkMode;
+  const fg = isDark ? COLORS.white : COLORS.nearBlack;
+  const bg = isDark ? COLORS.darkBg : COLORS.cream;
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -53,15 +61,15 @@ export default function TransactionSuccessScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { backgroundColor: bg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: bg }]} edges={['top', 'bottom']}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>
@@ -69,26 +77,26 @@ export default function TransactionSuccessScreen() {
             onPress={() => router.replace('/pos' as Href)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />
+            <Ionicons name="chevron-back" size={30} color={fg} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMenuVisible(true)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
+            <Ionicons name="menu" size={32} color={fg} />
           </TouchableOpacity>
         </View>
 
         {/* Center Status Content */}
         <View style={styles.centerContent}>
           <Foundation name="like" size={210} color={COLORS.yellow} />
-          <Text style={styles.successTitle}>Transaction success!</Text>
+          <Text style={[styles.successTitle, { color: fg }]}>Transaction success!</Text>
         </View>
 
         {/* Bottom Action Buttons */}
         <View style={styles.buttonGroup}>
           <TouchableOpacity
-            style={styles.newTxBtn}
+            style={[styles.newTxBtn, { backgroundColor: bg }]}
             onPress={() => router.replace('/pos' as Href)}
           >
             <Text style={styles.newTxBtnText}>New Transaction</Text>

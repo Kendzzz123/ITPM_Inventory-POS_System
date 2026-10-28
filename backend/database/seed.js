@@ -28,7 +28,7 @@ async function seed() {
   };
 
   try {
-    const hash = await bcrypt.hash(managerPassword, 10);
+    const hash = await bcrypt.hash(managerPassword, env.BCRYPT_ROUNDS);
     const [userResult] = await pool.query(
       `INSERT IGNORE INTO Users (Name, Username, Password_Hash, Role, Status, Email, Employment_Date)
        VALUES (?, ?, ?, 'manager', 'active', ?, CURDATE())`,
@@ -40,7 +40,8 @@ async function seed() {
 
     console.log(`Manager account: ${userResult.affectedRows ? 'created' : 'already exists'}`);
     if (userResult.affectedRows) {
-      console.log(`  login: ${manager.email || manager.username}  /  password: ${managerPassword} (change on first login)`);
+      console.log(`  login: ${manager.email || manager.username}`);
+      console.log("  password: the default staff password in your .env — change it on first login.");
     }
     console.log('Menu, stock items and portions are up to date.');
   } catch (err) {

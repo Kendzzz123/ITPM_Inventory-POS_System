@@ -13,10 +13,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const env = require('../config/env');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const { slashDateToSql, idParam, isValidEmail } = require('../utils/helpers');
-const { MIN_PASSWORD_LENGTH } = require('./auth.routes');
+const { assertPasswordLength } = require('./auth.routes');
 
 const router = express.Router();
 const managerOnly = authorizeRoles('manager');
@@ -77,14 +78,12 @@ router.post('/staff', managerOnly, async (req, res) => {
   const password = String(req.body?.password || '');
 
   if (!name) throw new HttpError(400, 'Name is required.');
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new HttpError(400, `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-  }
+  assertPasswordLength(password);
   validateContact({ email, phone });
 
   const employmentDate = slashDateToSql(req.body?.employmentDate) || new Date().toISOString().slice(0, 10);
   const username = await uniqueUsername(name);
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
 
   const [result] = await pool.query(
     `INSERT INTO Users (Name, Username, Password_Hash, Role, Status, Email, Phone, Employment_Date)
@@ -148,23 +147,18 @@ router.patch('/staff/:id/suspend', managerOnly, async (req, res) => {
   return res.json({ message: `Staff status updated to ${status}`, status });
 });
 
-// DELETE /protected/staff/:id — only works for staff without sales/waste history
+// DELETE /protected/staff/:id — deletes the cashier. Any past orders / stock
+// movements / waste stay as history with their User_ID set to NULL (unattributed),
+// handled automatically by the ON DELETE SET NULL foreign keys.
 router.delete('/staff/:id', managerOnly, async (req, res) => {
   const id = idParam(req.params.id);
   await assertCashier(id);
 
-  try {
-    await pool.query('DELETE FROM OTP_Codes WHERE User_ID = ?', [id]);
-    await pool.query('DELETE FROM Users WHERE User_ID = ?', [id]);
-  } catch (err) {
-    if (String(err.code).startsWith('ER_ROW_IS_REFERENCED')) {
-      throw new HttpError(
-        400,
-        'Cannot permanently delete staff with existing transaction records. Suspend them instead.'
-      );
-    }
-    throw err;
-  }
+  // Remove the one row type that doesn't SET NULL (OTP codes aren't history).
+  await pool.query('DELETE FROM OTP_Codes WHERE User_ID = ?', [id]);
+  const [result] = await pool.query('DELETE FROM Users WHERE User_ID = ?', [id]);
+  if (result.affectedRows === 0) throw new HttpError(404, 'Staff member not found.');
+
   return res.json({ message: 'Staff account deleted successfully' });
 });
 

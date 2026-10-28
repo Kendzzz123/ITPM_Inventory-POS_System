@@ -23,9 +23,9 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import { File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as XLSX from 'xlsx';
+import { File } from 'expo-file-system';
+import { saveExcelToDevice, shareFile } from '@/services/exportFile';
+import { buildTransactionsXlsxBase64 } from '@/services/exportSheet';
 import axios from 'axios';
 import { showAlert } from '@/utils/alert';
 import { API_URL } from '@/config/apiConfig';
@@ -94,11 +94,12 @@ export default function TransactionHistoryScreen() {
   const [exportComplete, setExportComplete] = useState(false);
   const [exportedFilePath, setExportedFilePath] = useState<string | null>(null);
   const [exportedWbBase64, setExportedWbBase64] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState('Saved to your device.');
   const [exportedFilename, setExportedFilename] = useState<string>('Transactions.xlsx');
 
   // Export Filter Selections
   const [dateFilter, setDateFilter] = useState<'Today' | 'This Week' | 'This Month' | 'Custom' | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'All' | 'Cash' | 'E-wallet' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'All' | 'Cash' | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -177,23 +178,33 @@ export default function TransactionHistoryScreen() {
         return;
       }
 
-      const dataToExport = rowsToExport.map((item) => ({
-        Date: item.date,
-        Time: item.time,
-        Product: String(item.product).replace(/\n/g, ' '),
-        'Total Amount (PHP)': Number(item.amount),
-        'Payment Method': item.method || 'Cash',
-      }));
+      // Human-readable labels for the sheet's filter line.
+      const dateLabel =
+        dateFilter === 'Custom'
+          ? `${startDate.trim()} to ${endDate.trim()}`
+          : dateFilter || 'All dates';
+      const methodLabel = !paymentMethod || paymentMethod === 'All' ? 'All payment methods' : paymentMethod;
 
-      const ws = XLSX.utils.json_to_sheet(dataToExport);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+      const wbout = buildTransactionsXlsxBase64(
+        rowsToExport.map((item) => ({
+          date: item.date,
+          time: item.time,
+          product: String(item.product),
+          amount: Number(item.amount),
+          method: item.method || 'Cash',
+        })),
+        { dateLabel, methodLabel }
+      );
 
-      const filename = `MrLiempo_Transactions_${Date.now()}.xlsx`;
+      // "Mr Liempo Transactions 2026-10-28 1925.xlsx"
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+        now.getDate()
+      ).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+      const filename = `Mr Liempo Transactions ${stamp}.xlsx`;
       setExportedFilename(filename);
 
       if (Platform.OS === 'web') {
-        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
         setExportedWbBase64(wbout);
         const link = document.createElement('a');
         link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${wbout}`;
@@ -204,13 +215,12 @@ export default function TransactionHistoryScreen() {
         setModalVisible(false);
         setExportComplete(true);
       } else {
-        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-        const file = new File(Paths.document, filename);
-        file.create({ overwrite: true });
-        await file.write(wbout, { encoding: 'base64' });
-
-        setExportedFilePath(file.uri);
         setModalVisible(false);
+        // Android: saves into a folder you choose (e.g. Download).
+        // iPhone: opens the share menu -> "Save to Files".
+        const result = await saveExcelToDevice(wbout, filename);
+        setExportedFilePath(result.shareUri);
+        setSavedMessage(result.message);
         setExportComplete(true);
       }
     } catch (err: any) {
@@ -240,19 +250,28 @@ export default function TransactionHistoryScreen() {
     }
 
     try {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(exportedFilePath, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'Mr. Liempo Transactions',
-          UTI: 'com.microsoft.excel.xlsx',
-        });
-      } else {
-        showAlert('Saved', `File saved at: ${exportedFilePath}`);
-      }
+      await shareFile(exportedFilePath, 'Mr. Liempo Transactions');
     } catch (err: any) {
-      showAlert('Error', err.message || 'Could not open file.');
+      showAlert('Error', err.message || 'Could not share the file.');
     }
+  };
+
+  /** Opens the exported file in a preview (falls back to the share menu). */
+  const handleOpenFile = async () => {
+    if (Platform.OS === 'web' || !exportedFilePath) {
+      handleShareOrOpen();
+      return;
+    }
+    try {
+      const file = new File(exportedFilePath);
+      if (await File.canPreview(file)) {
+        await File.preview(file);
+        return;
+      }
+    } catch {
+      // No previewer available -> share menu lets the user pick Excel / Sheets.
+    }
+    handleShareOrOpen();
   };
 
   if (!fontsLoaded) {
@@ -298,12 +317,12 @@ export default function TransactionHistoryScreen() {
               <Feather name="check" size={86} color={COLORS.green} />
             </View>
 
-            <Text style={[styles.savedText, textColor]}>Saved to your device.</Text>
+            <Text style={[styles.savedText, textColor]}>{savedMessage}</Text>
 
             <TouchableOpacity
               style={styles.openFileBtn}
               activeOpacity={0.85}
-              onPress={handleShareOrOpen}
+              onPress={handleOpenFile}
             >
               <Text style={styles.openFileBtnText}>Open File</Text>
             </TouchableOpacity>
@@ -537,7 +556,7 @@ export default function TransactionHistoryScreen() {
               Payment Method
             </Text>
             <View style={styles.pillRow}>
-              {(['All', 'Cash', 'E-wallet'] as const).map((method) => {
+              {(['All', 'Cash'] as const).map((method) => {
                 const isSelected = paymentMethod === method;
                 return (
                   <TouchableOpacity

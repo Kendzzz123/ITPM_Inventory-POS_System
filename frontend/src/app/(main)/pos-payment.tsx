@@ -9,6 +9,7 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -80,6 +81,9 @@ export default function PosPaymentScreen() {
   const [isEntered, setIsEntered] = useState<boolean>(false);
   const [changeAmount, setChangeAmount] = useState<number>(0);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // Shown after "Enter": asks the cashier to confirm the customer actually paid
+  // BEFORE the sale is recorded and the success screen appears.
+  const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
 
   const handleDigitPress = (digit: string) => {
     setCashInput((prev) => {
@@ -94,15 +98,20 @@ export default function PosPaymentScreen() {
     setCashInput((prev) => (prev.length > 1 ? prev.slice(0, -1) : '0'));
   };
 
-  const handleEnterPayment = async () => {
-    const numericCash = Number(cashInput.replace(/,/g, ''));
-    let parsedItems: { item_id: number; qty: number }[] = [];
+  /** Parses the cart passed from the POS screen. */
+  const getItems = (): { item_id: number; qty: number }[] => {
     try {
-      parsedItems = params.itemsJson ? JSON.parse(params.itemsJson) : [];
+      return params.itemsJson ? JSON.parse(params.itemsJson) : [];
     } catch {
-      parsedItems = [];
+      return [];
     }
-    if (parsedItems.length === 0 || orderTotal <= 0) {
+  };
+
+  // "Enter" only PREVIEWS the change. Nothing is saved yet — the sale is
+  // recorded when the cashier confirms the customer has paid (handleConfirmPaid).
+  const handleEnterPayment = () => {
+    const numericCash = Number(cashInput.replace(/,/g, ''));
+    if (getItems().length === 0 || orderTotal <= 0) {
       showAlert('Empty Order', 'Please add items to the order first.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -115,7 +124,15 @@ export default function PosPaymentScreen() {
       );
       return;
     }
+    setChangeAmount(numericCash - orderTotal);
+    setIsEntered(true);
+  };
 
+  // Records the sale, then goes to the success screen. Only runs after the
+  // cashier confirms the customer paid.
+  const handleConfirmPaid = async () => {
+    const numericCash = Number(cashInput.replace(/,/g, ''));
+    const parsedItems = getItems();
     setSubmitting(true);
     try {
       const token = await getToken();
@@ -123,8 +140,7 @@ export default function PosPaymentScreen() {
         router.replace('/');
         return;
       }
-
-      const res = await axios.post(
+      await axios.post(
         `${API_URL}/protected/orders`,
         {
           items: parsedItems,
@@ -133,11 +149,11 @@ export default function PosPaymentScreen() {
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      setChangeAmount(Number(res.data?.changeAmount ?? numericCash - orderTotal));
-      setIsEntered(true);
+      setConfirmVisible(false);
+      router.replace('/transaction-success' as any);
     } catch (err: any) {
       // The sale was NOT saved — never show a fake success.
+      setConfirmVisible(false);
       showAlert(
         'Payment Failed',
         err.response?.data?.message || 'Could not reach the server. The order was not saved.'
@@ -304,13 +320,8 @@ export default function PosPaymentScreen() {
                     style={styles.enterKeyButton}
                     activeOpacity={0.85}
                     onPress={handleEnterPayment}
-                    disabled={submitting}
                   >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color={COLORS.white} />
-                    ) : (
-                      <Text style={styles.enterKeyText}>Enter</Text>
-                    )}
+                    <Text style={styles.enterKeyText}>Enter</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -320,14 +331,81 @@ export default function PosPaymentScreen() {
             <View style={styles.exitRow}>
               <TouchableOpacity
                 style={styles.exitBtn}
-                onPress={() => router.replace('/transaction-success' as any)}
+                activeOpacity={0.85}
+                onPress={() => setConfirmVisible(true)}
               >
-                <Text style={styles.exitBtnText}>Exit</Text>
+                <Text style={styles.exitBtnText}>Confirm Payment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.editAmountBtn}
+                onPress={() => setIsEntered(false)}
+              >
+                <Text style={styles.editAmountText}>Edit amount</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
       </ScrollView>
+
+      {/* Confirm the customer paid — the sale is recorded only on Confirm */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!submitting) setConfirmVisible(false);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, isCashierDark && { backgroundColor: COLORS.darkCard }]}>
+            <View style={styles.modalIconCircle}>
+              <Ionicons name="cash-outline" size={44} color={COLORS.red} />
+            </View>
+            <Text style={[styles.modalTitle, textColor]}>Confirm Payment</Text>
+            <Text style={[styles.modalSub, textColor]}>
+              Has the customer paid and received their change?
+            </Text>
+
+            <View style={styles.modalLines}>
+              <View style={styles.modalLineRow}>
+                <Text style={[styles.modalLineLabel, textColor]}>Total</Text>
+                <Text style={[styles.modalLineVal, textColor]}>₱{orderTotal.toLocaleString()}</Text>
+              </View>
+              <View style={styles.modalLineRow}>
+                <Text style={[styles.modalLineLabel, textColor]}>Cash</Text>
+                <Text style={[styles.modalLineVal, textColor]}>
+                  ₱{Number(cashInput).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.modalLineRow}>
+                <Text style={[styles.modalLineLabel, textColor]}>Change</Text>
+                <Text style={styles.modalChangeVal}>₱{changeAmount.toLocaleString()}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setConfirmVisible(false)}
+                disabled={submitting}
+              >
+                <Text style={styles.cancelBtnText}>Not yet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={handleConfirmPaid}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.confirmBtnText}>Confirm</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Role-Aware Side Menu Drawer */}
       <RoleSideDrawer
@@ -476,20 +554,134 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   exitRow: {
-    alignItems: 'flex-end',
-    paddingRight: 8,
+    alignItems: 'center',
+    marginTop: 24,
   },
   exitBtn: {
-    width: 165,
-    height: 42,
+    width: 230,
+    height: 48,
     backgroundColor: COLORS.red,
-    borderRadius: 12,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   exitBtnText: {
     fontFamily: 'Poppins_700Bold',
     color: COLORS.white,
-    fontSize: 12,
+    fontSize: 15,
+  },
+  editAmountBtn: {
+    marginTop: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  editAmountText: {
+    fontFamily: 'Poppins_500Medium',
+    color: COLORS.red,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,16,21,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FDFBF0',
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 1,
+    borderColor: COLORS.nearBlack,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 18,
+    color: COLORS.nearBlack,
+  },
+  modalSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.nearBlack,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  modalLines: {
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  modalLineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  modalLineLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.nearBlack,
+  },
+  modalLineVal: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: COLORS.nearBlack,
+  },
+  modalChangeVal: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16,
+    color: COLORS.red,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.red,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.red,
+    fontSize: 13,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: COLORS.red,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.white,
+    fontSize: 13,
   },
 });

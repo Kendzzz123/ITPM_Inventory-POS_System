@@ -77,11 +77,11 @@ CREATE TABLE Recipe_Portions (
 
 CREATE TABLE Orders (
   Order_ID          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  User_ID           INT UNSIGNED NOT NULL,
+  User_ID           INT UNSIGNED NULL,               -- NULL after the cashier is deleted (history kept)
   Client_Request_ID CHAR(36) NOT NULL,               -- idempotency key (UUID generated once per cart)
   Order_Date_Time   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   Total_Amount      DECIMAL(10,2) NOT NULL,          -- validated snapshot of SUM(Order_Details.Subtotal)
-  CONSTRAINT fk_orders_user FOREIGN KEY (User_ID) REFERENCES Users(User_ID) ON DELETE RESTRICT,
+  CONSTRAINT fk_orders_user FOREIGN KEY (User_ID) REFERENCES Users(User_ID) ON DELETE SET NULL,
   CONSTRAINT uq_orders_idem UNIQUE (User_ID, Client_Request_ID),
   CONSTRAINT ck_orders_total CHECK (Total_Amount >= 0),
   INDEX idx_orders_date (Order_Date_Time),
@@ -137,10 +137,10 @@ CREATE TABLE Waste_Log (
   Quantity          DECIMAL(12,3) NOT NULL,          -- positive magnitude of the event
   Reason            VARCHAR(255) NOT NULL,
   Date              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  User_ID           INT UNSIGNED NOT NULL,
+  User_ID           INT UNSIGNED NULL,               -- NULL after the cashier is deleted (history kept)
   Client_Request_ID CHAR(36) NOT NULL,
   CONSTRAINT fk_waste_stock FOREIGN KEY (Stock_ID) REFERENCES Stock_Items(Stock_ID) ON DELETE RESTRICT,
-  CONSTRAINT fk_waste_user  FOREIGN KEY (User_ID)  REFERENCES Users(User_ID)        ON DELETE RESTRICT,
+  CONSTRAINT fk_waste_user  FOREIGN KEY (User_ID)  REFERENCES Users(User_ID)        ON DELETE SET NULL,
   CONSTRAINT uq_waste_idem  UNIQUE (User_ID, Client_Request_ID),
   CONSTRAINT ck_waste_qty    CHECK (Quantity > 0),
   CONSTRAINT ck_waste_reason CHECK (CHAR_LENGTH(TRIM(Reason)) > 0),
@@ -153,13 +153,13 @@ CREATE TABLE Stock_Movements (                         -- authoritative inventor
   Type         ENUM('Sale','Stock-In','Adjustment','Waste') NOT NULL,
   Quantity     DECIMAL(12,3) NOT NULL,               -- SIGNED delta: Sale/Waste < 0, Stock-In > 0, Adjustment <> 0
   Date         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  User_ID      INT UNSIGNED NOT NULL,
+  User_ID      INT UNSIGNED NULL,                    -- NULL after the cashier is deleted (ledger kept)
   Order_ID     INT UNSIGNED NULL,
   Waste_ID     INT UNSIGNED NULL,
   PO_ID        INT UNSIGNED NULL,
   Note         VARCHAR(255) NULL,
   CONSTRAINT fk_sm_stock FOREIGN KEY (Stock_ID) REFERENCES Stock_Items(Stock_ID)    ON DELETE RESTRICT,
-  CONSTRAINT fk_sm_user  FOREIGN KEY (User_ID)  REFERENCES Users(User_ID)           ON DELETE RESTRICT,
+  CONSTRAINT fk_sm_user  FOREIGN KEY (User_ID)  REFERENCES Users(User_ID)           ON DELETE SET NULL,
   CONSTRAINT fk_sm_order FOREIGN KEY (Order_ID) REFERENCES Orders(Order_ID)         ON DELETE RESTRICT,
   CONSTRAINT fk_sm_waste FOREIGN KEY (Waste_ID) REFERENCES Waste_Log(Waste_ID)      ON DELETE RESTRICT,
   CONSTRAINT fk_sm_po    FOREIGN KEY (PO_ID)    REFERENCES Purchase_Orders(PO_ID)   ON DELETE RESTRICT,

@@ -22,6 +22,37 @@ async function addColumnIfMissing(table, column, definition) {
   }
 }
 
+/**
+ * Changes the Users foreign key on <table>.User_ID to ON DELETE SET NULL, so a
+ * staff member can be deleted even when they have transaction history: the
+ * history rows stay, their User_ID just becomes NULL (unattributed). InnoDB
+ * runs the SET NULL itself and does NOT fire the append-only triggers, so the
+ * ledger / waste history are never actually edited by hand.
+ */
+async function makeUserFkSetNull(table) {
+  const [[fk]] = await pool.query(
+    `SELECT rc.CONSTRAINT_NAME AS name, rc.DELETE_RULE AS rule
+       FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+       JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+         ON kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+        AND kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+      WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+        AND rc.TABLE_NAME = ?
+        AND rc.REFERENCED_TABLE_NAME = 'Users'
+        AND kcu.COLUMN_NAME = 'User_ID'
+      LIMIT 1`,
+    [table]
+  );
+  if (!fk || fk.rule === 'SET NULL') return; // already done or no such FK
+
+  await pool.query(`ALTER TABLE \`${table}\` DROP FOREIGN KEY \`${fk.name}\``);
+  await pool.query(`ALTER TABLE \`${table}\` MODIFY User_ID INT UNSIGNED NULL`);
+  await pool.query(
+    `ALTER TABLE \`${table}\` ADD CONSTRAINT \`${fk.name}\`
+       FOREIGN KEY (User_ID) REFERENCES Users(User_ID) ON DELETE SET NULL`
+  );
+}
+
 /** Ordered list of one-time upgrades. Never edit or reorder old entries — add new ones. */
 const MIGRATIONS = [
   {
@@ -55,6 +86,15 @@ const MIGRATIONS = [
           [p.quantityUsed, p.stock, p.item]
         );
       }
+    },
+  },
+  {
+    id: '003_delete_staff_with_history',
+    description: 'Allow deleting staff who have transactions (history kept, unattributed)',
+    run: async () => {
+      await makeUserFkSetNull('Orders');
+      await makeUserFkSetNull('Stock_Movements');
+      await makeUserFkSetNull('Waste_Log');
     },
   },
 ];

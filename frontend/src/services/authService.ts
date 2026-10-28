@@ -6,7 +6,7 @@
  */
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { resetAppState, setGlobalUserRole } from '@/store/appState';
+import { resetAppState, setCurrentUser, setGlobalUserRole } from '@/store/appState';
 
 /** Storage key for the JWT token */
 const TOKEN_KEY = 'auth_token';
@@ -100,9 +100,11 @@ export async function restoreRoleFromToken(): Promise<string | null> {
   try {
     const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-    const data = JSON.parse(atob(padded)) as { role?: string; exp?: number };
+    const data = JSON.parse(atob(padded)) as { id?: number; role?: string; exp?: number };
     if (data.exp && data.exp * 1000 < Date.now()) return null;
     if (data.role) setGlobalUserRole(data.role);
+    // Bring back this user's dark-mode setting after an app restart.
+    await setCurrentUser(data.id ?? null);
     return data.role ?? null;
   } catch {
     return null;

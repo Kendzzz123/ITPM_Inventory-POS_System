@@ -37,9 +37,9 @@ function friendlySqlMessage(err) {
   return null;
 }
 
-/** 404 for unknown routes. */
+/** 404 for unknown routes. Don't reflect the requested path back to the client. */
 function notFound(req, res) {
-  res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
+  res.status(404).json({ message: 'Route not found.' });
 }
 
 /** @type {import('express').ErrorRequestHandler} */
@@ -48,14 +48,28 @@ function errorHandler(err, req, res, next) {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ message: err.message });
   }
+  // Body-parser errors (express.json): too large, malformed, wrong charset.
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Request body is too large.' });
+  }
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ message: 'Invalid JSON body.' });
+  }
+  if (err.type === 'charset.unsupported' || err.type === 'encoding.unsupported') {
+    return res.status(415).json({ message: 'Unsupported content encoding.' });
   }
   const sqlMessage = friendlySqlMessage(err);
   if (sqlMessage) {
     return res.status(400).json({ message: sqlMessage });
   }
-  console.error(`[${req.method} ${req.originalUrl}]`, err);
+  // Log a concise line (no request body, no SQL values) so credentials and
+  // personal data never land in the logs. Show the stack only outside production.
+  const where = `[${req.method} ${req.originalUrl}]`;
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`${where} ${err.code || ''} ${err.message}`);
+  } else {
+    console.error(`${where} ${err.code || ''} ${err.message}\n${err.stack || ''}`);
+  }
   return res.status(500).json({ message: 'Something went wrong on the server.' });
 }
 

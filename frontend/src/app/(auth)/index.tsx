@@ -27,7 +27,7 @@ import axios from 'axios';
 import { showAlert } from '@/utils/alert';
 import { API_URL } from '@/config/apiConfig';
 import { saveToken, clearToken } from '@/services/authService';
-import { setGlobalUserRole } from '@/store/appState';
+import { setCurrentUser, setGlobalUserRole } from '@/store/appState';
 import { DEFAULT_PASSWORDS } from '@/constants/app';
 import { ROUTES, homeRouteFor } from '@/constants/routes';
 
@@ -77,6 +77,8 @@ setLoading(true);
 
       const userRole = response.data?.user?.role?.toLowerCase() || '';
       setGlobalUserRole(userRole === 'manager' ? 'manager' : 'cashier');
+      // Load this user's saved dark-mode setting before opening their home screen.
+      await setCurrentUser(response.data?.user?.id);
 
       const isDefaultPassword =
         response.data?.mustChangePassword === true || DEFAULT_PASSWORDS.includes(password);
