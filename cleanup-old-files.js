@@ -4,14 +4,20 @@
  *     node cleanup-old-files.js
  *
  * Moves the old / duplicate / unused template files into _to_delete/
- * (same folder layout) so Expo Router stops seeing duplicate screens.
+ * (same folder layout) so Expo Router stops seeing duplicate screens, and
+ * tells git to stop tracking them — otherwise a git pull / checkout puts
+ * the old (login_module) screens back and the app opens the OLD login page.
+ *
+ * Safe to run again any time. Afterwards commit the removal:
+ *     git commit -m "Remove old duplicate screens"
  * Nothing is permanently deleted: check the app runs, then delete the
- * _to_delete folder and this script yourself.
+ * _to_delete folder yourself.
  */
 
 'use strict';
 
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 const path = require('path');
 
 const ROOT = __dirname;
@@ -66,11 +72,33 @@ const OLD_PATHS = [
   '.gitmodules',
 ];
 
+/** Stops git tracking a path (keeps the file on disk). Ignored if git isn't available. */
+function gitUntrack(rel) {
+  try {
+    execFileSync('git', ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', rel], {
+      cwd: ROOT,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A free destination inside _to_delete (adds -2, -3... if it was moved before). */
+function freeTarget(rel) {
+  let to = path.join(TRASH, rel);
+  for (let i = 2; fs.existsSync(to); i += 1) to = path.join(TRASH, `${rel}-${i}`);
+  return to;
+}
+
+const isGitRepo = fs.existsSync(path.join(ROOT, '.git'));
 let moved = 0;
 for (const rel of OLD_PATHS) {
   const from = path.join(ROOT, rel);
   if (!fs.existsSync(from)) continue;
-  const to = path.join(TRASH, rel);
+  if (isGitRepo) gitUntrack(rel);
+  const to = freeTarget(rel);
   fs.mkdirSync(path.dirname(to), { recursive: true });
   try {
     fs.renameSync(from, to);
@@ -83,6 +111,11 @@ for (const rel of OLD_PATHS) {
 
 console.log(
   moved
-    ? `\nDone: ${moved} item(s) moved to _to_delete/. Run the app, then delete _to_delete/ and this script.`
+    ? `\nDone: ${moved} item(s) moved to _to_delete/.`
     : '\nNothing to move — already cleaned up.'
 );
+if (moved && isGitRepo) {
+  console.log('Now run:  git commit -m "Remove old duplicate screens"');
+  console.log('so a git pull/checkout never brings the old screens back.');
+}
+console.log('Then restart Expo with:  npx expo start -c');

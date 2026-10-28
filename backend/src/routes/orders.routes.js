@@ -60,6 +60,9 @@ router.post('/orders', async (req, res) => {
           return res.json({ message: 'Transaction success!', ...rows[0], changeAmount: Number(rows[0].changeAmount) });
         }
       }
+      if (err.sqlState === '45000' && /insufficient stock/i.test(err.sqlMessage)) {
+        throw new HttpError(400, 'Not enough stock for this order. Please restock first.');
+      }
       throw err;
     }
 

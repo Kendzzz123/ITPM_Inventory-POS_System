@@ -80,6 +80,8 @@ export const PROTECTED_ENDPOINTS = {
   MANAGER_DASHBOARD: `${API_URL}/protected/manager-dashboard`,
   /** PUT — update one menu item's price */
   menuItem: (id: number | string) => `${API_URL}/protected/menu-items/${id}`,
+  /** PUT — set the stock portion one order of a menu item uses */
+  menuItemPortion: (id: number | string) => `${API_URL}/protected/menu-items/${id}/portion`,
   /** PUT / DELETE — one staff member */
   staffMember: (id: number | string) => `${API_URL}/protected/staff/${id}`,
   /** PATCH — suspend / reactivate one staff member */

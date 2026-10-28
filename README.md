@@ -69,7 +69,11 @@ If that fails, change `FALLBACK_HOST_IP` in `frontend/src/config/apiConfig.ts`
 
 ## Notes
 
-- Stock quantities start at 0 — use **Restock** to add stock.
-- Sales don't deduct stock until recipes are added to the `Recipe_Portions` table
-  (which stock item, and how much, each menu item uses).
+- Stock quantities start at 0 — use **Restock** to add stock before selling.
+- Each menu item has a **portion**: how much stock one order uses (e.g. Half Juicy
+  Chicken = 0.5 pcs Raw Chicken). Every sale deducts it, and the POS shows how many
+  orders are left and blocks items that are out of stock. Change portions in
+  **Manage Price → Edit Price → Portion per order**. Starting values are in
+  `backend/src/config/catalog.js`.
+- The backend applies database upgrades by itself on start (`src/config/ensureSchema.js`).
 - Only cash payments are recorded today; the "E-wallet" export filter returns no rows.

@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
+import PortionEditor from '@/components/PortionEditor';
 import { showAlert } from '@/utils/alert';
 import { API_URL } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
@@ -196,6 +197,9 @@ export default function EditPriceScreen() {
           <TouchableOpacity style={styles.saveBtn} onPress={handleOpenConfirm}>
             <Text style={styles.saveBtnText}>Save Changes</Text>
           </TouchableOpacity>
+
+          {/* How much stock one order uses */}
+          <PortionEditor itemId={itemId} itemName={itemName} />
         </View>
       </ScrollView>
 

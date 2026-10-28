@@ -11,7 +11,7 @@ import {
   Keyboard,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -80,6 +80,11 @@ export default function NewPasswordScreen() {
       setLoading(false);
     }
   };
+
+  // No reset session (e.g. opened after an app reload) -> back to Login.
+  if (!params.email || !params.otp) {
+    return <Redirect href="/" />;
+  }
 
   return (
     <KeyboardAvoidingView

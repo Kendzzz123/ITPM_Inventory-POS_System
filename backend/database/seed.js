@@ -17,27 +17,7 @@
 const bcrypt = require('bcryptjs');
 const env = require('../src/config/env');
 const pool = require('../src/config/db');
-
-/** Menu shown in POS / Manage Price. Prices can be changed later in the app. */
-const MENU_ITEMS = [
-  { name: 'Whole Juicy Chicken', price: 320, category: 'Chicken' },
-  { name: 'Half Juicy Chicken', price: 285, category: 'Chicken' },
-  { name: 'Liempo', price: 285, category: 'Pork' },
-  { name: 'Regular Chorizo', price: 140, category: 'Chorizo' },
-  { name: 'Spicy Chorizo', price: 145, category: 'Chorizo' },
-  { name: 'Atsara', price: 25, category: 'Sides' },
-  { name: 'Sarsa (Gravy)', price: 7, category: 'Sides' },
-];
-
-/** Inventory tracked in Stocks / Restock / Record Waste. Quantities start at 0 — use Restock. */
-const STOCK_ITEMS = [
-  { name: 'Raw Chicken', unit: 'pcs', minLevel: 10 },
-  { name: 'Raw Pork', unit: 'kg', minLevel: 5 },
-  { name: 'Regular Chorizo', unit: 'pcs', minLevel: 20 },
-  { name: 'Spicy Chorizo', unit: 'pcs', minLevel: 20 },
-  { name: 'Atsara', unit: 'packs', minLevel: 10 },
-  { name: 'Sarsa (Gravy)', unit: 'L', minLevel: 2 },
-];
+const ensureSchema = require('../src/config/ensureSchema');
 
 async function seed() {
   const managerPassword = env.DEFAULT_STAFF_PASSWORDS[0];
@@ -55,22 +35,14 @@ async function seed() {
       [manager.name, manager.username, hash, manager.email]
     );
 
-    const [menuResult] = await pool.query(
-      'INSERT IGNORE INTO Menu_Items (Item_Name, Price, Category) VALUES ?',
-      [MENU_ITEMS.map((m) => [m.name, m.price, m.category])]
-    );
-
-    const [stockResult] = await pool.query(
-      'INSERT IGNORE INTO Stock_Items (Stock_Name, Unit, Current_Quantity, Minimum_Level) VALUES ?',
-      [STOCK_ITEMS.map((s) => [s.name, s.unit, 0, s.minLevel])]
-    );
+    // Menu, stock items and portions (src/config/catalog.js) — same step the server runs on start.
+    await ensureSchema();
 
     console.log(`Manager account: ${userResult.affectedRows ? 'created' : 'already exists'}`);
     if (userResult.affectedRows) {
       console.log(`  login: ${manager.email || manager.username}  /  password: ${managerPassword} (change on first login)`);
     }
-    console.log(`Menu items added: ${menuResult.affectedRows}`);
-    console.log(`Stock items added: ${stockResult.affectedRows}`);
+    console.log('Menu, stock items and portions are up to date.');
   } catch (err) {
     console.error('Seed error:', err.message);
     process.exitCode = 1;

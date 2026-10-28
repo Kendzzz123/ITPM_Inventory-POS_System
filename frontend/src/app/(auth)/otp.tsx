@@ -15,7 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import axios from 'axios';
 import { showAlert } from '@/utils/alert';
@@ -151,6 +151,12 @@ export default function EmailVerificationScreen() {
       setIsResending(false);
     }
   };
+
+  // Opened without an email (e.g. app reload / QR scan restored this screen):
+  // there is nothing to verify, so start at the Login page instead.
+  if (!emailDisplay) {
+    return <Redirect href="/" />;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>

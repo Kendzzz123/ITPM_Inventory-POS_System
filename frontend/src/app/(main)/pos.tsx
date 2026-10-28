@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, type Href, useFocusEffect } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -40,11 +40,21 @@ const COLORS = {
   darkCard: '#22242E',
 };
 
+/** How much of one stock item ONE order uses (from Recipe_Portions). */
+type Portion = {
+  stockId: number;
+  stockName: string;
+  unit: string;
+  quantityUsed: number;
+  inStock: number;
+};
+
 type PosMenuItem = {
   id: number;
   name: string;
   price: number;
   image: string;
+  portions: Portion[];
 };
 
 type CartItem = PosMenuItem & {
@@ -62,6 +72,8 @@ export default function PosScreen() {
   });
 
   const [menu, setMenu] = useState<PosMenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -79,6 +91,8 @@ export default function PosScreen() {
   }, []);
 
   const loadMenu = useCallback(async () => {
+    setMenuLoading(true);
+    setMenuError(null);
     try {
       const token = await getToken();
       if (!token) {
@@ -88,25 +102,70 @@ export default function PosScreen() {
       const res = await axios.get(`${API_URL}/protected/menu-items`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const dbItems: { id: number; name: string; price: number }[] = res.data?.items || [];
+      const dbItems: { id: number; name: string; price: number; portions?: Portion[] }[] =
+        res.data?.items || [];
       setMenu(
         dbItems.map((i) => ({
           id: i.id,
           name: i.name,
           price: Number(i.price),
           image: imageFor(i.name),
+          portions: i.portions || [],
         }))
       );
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.message || 'Could not load the menu.');
+      if (err.response?.status === 401) {
+        router.replace('/');
+        return;
+      }
+      setMenuError(
+        err.response?.data?.message ||
+          `Could not reach the server at ${API_URL}. Make sure the backend is running (npm start in the backend folder) and your phone is on the same Wi-Fi.`
+      );
+    } finally {
+      setMenuLoading(false);
     }
   }, [router]);
 
-  useEffect(() => {
-    loadMenu();
-  }, [loadMenu]);
+  // Refresh menu + stock every time the POS is opened (stock changes after each sale).
+  useFocusEffect(
+    useCallback(() => {
+      loadMenu();
+    }, [loadMenu])
+  );
+
+  /**
+   * Orders of `item` that can still be added, after what is already in the cart.
+   * Items sharing a stock (e.g. Whole and Half Juicy Chicken both use Raw Chicken)
+   * count against the same stock. null = no portion set, so no limit.
+   */
+  const ordersLeft = (item: PosMenuItem, currentCart: CartItem[] = cart): number | null => {
+    if (item.portions.length === 0) return null;
+    return Math.min(
+      ...item.portions.map((p) => {
+        const usedInCart = currentCart.reduce((sum, line) => {
+          const linePortion = line.portions.find((lp) => lp.stockId === p.stockId);
+          return sum + (linePortion ? line.qty * linePortion.quantityUsed : 0);
+        }, 0);
+        return Math.max(0, Math.floor((p.inStock - usedInCart + 1e-9) / p.quantityUsed));
+      })
+    );
+  };
+
+  const warnOutOfStock = (item: PosMenuItem) => {
+    const stockNames = item.portions.map((p) => p.stockName).join(', ');
+    showAlert(
+      'Not Enough Stock',
+      `There isn't enough ${stockNames} left for another ${item.name}. Please restock first.`
+    );
+  };
 
   const addToCart = (item: PosMenuItem) => {
+    const left = ordersLeft(item);
+    if (left !== null && left < 1) {
+      warnOutOfStock(item);
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((c) => c.id === item.id);
       if (existing) {
@@ -117,6 +176,14 @@ export default function PosScreen() {
   };
 
   const updateQty = (id: number, delta: number) => {
+    if (delta > 0) {
+      const item = menu.find((m) => m.id === id);
+      const left = item ? ordersLeft(item) : null;
+      if (item && left !== null && left < delta) {
+        warnOutOfStock(item);
+        return;
+      }
+    }
     setCart((prev) =>
       prev
         .map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c))
@@ -188,10 +255,31 @@ export default function PosScreen() {
 
           <Text style={[styles.pageTitle, textColor]}>Point-of-Sale</Text>
 
+          {/* Loading / error / empty states */}
+          {menu.length === 0 && (
+            <View style={styles.menuStateBox}>
+              {menuLoading ? (
+                <ActivityIndicator size="large" color={COLORS.red} />
+              ) : (
+                <>
+                  <Text style={[styles.menuStateText, textColor]}>
+                    {menuError ??
+                      'No menu items found. Restart the backend (npm start in the backend folder) so it can add the Mr. Liempo menu.'}
+                  </Text>
+                  <TouchableOpacity style={styles.retryBtn} onPress={loadMenu}>
+                    <Text style={styles.retryBtnText}>Try again</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
+
           {/* 3-Column Item Grid */}
           <View style={styles.menuGrid}>
             {menu.map((item, idx) => {
               const isLastCentered = idx === menu.length - 1 && menu.length % 3 === 1;
+              const left = ordersLeft(item);
+              const soldOut = left !== null && left < 1;
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -199,12 +287,20 @@ export default function PosScreen() {
                     styles.menuCard,
                     isLastCentered && styles.centeredCard,
                     isCashierDark && { backgroundColor: COLORS.darkCard, borderColor: '#374151' },
+                    soldOut && styles.soldOutCard,
                   ]}
                   activeOpacity={0.85}
                   onPress={() => addToCart(item)}
                 >
                   <View style={styles.cardImgBox}>
                     <Image source={{ uri: item.image }} style={styles.cardImg} resizeMode="contain" />
+                    {left !== null && (
+                      <View style={[styles.leftBadge, soldOut && styles.leftBadgeSoldOut]}>
+                        <Text style={[styles.leftBadgeText, soldOut && styles.leftBadgeTextSoldOut]}>
+                          {soldOut ? 'Out of stock' : `${left} left`}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <View style={styles.cardBottomRow}>
                     <Text style={[styles.cardItemName, textColor]} numberOfLines={2}>
@@ -367,6 +463,52 @@ const styles = StyleSheet.create({
   centeredCard: {
     marginLeft: 'auto',
     marginRight: 'auto',
+  },
+  menuStateBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 12,
+  },
+  menuStateText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryBtn: {
+    marginTop: 14,
+    backgroundColor: COLORS.red,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 26,
+  },
+  retryBtnText: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
+    color: COLORS.white,
+  },
+  soldOutCard: {
+    opacity: 0.55,
+  },
+  leftBadge: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    backgroundColor: COLORS.yellow,
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  leftBadgeSoldOut: {
+    backgroundColor: COLORS.red,
+  },
+  leftBadgeText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 8.5,
+    color: COLORS.nearBlack,
+  },
+  leftBadgeTextSoldOut: {
+    color: COLORS.white,
   },
   cardImgBox: {
     height: 56,
