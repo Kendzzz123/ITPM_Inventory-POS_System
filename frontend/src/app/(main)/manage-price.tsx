@@ -14,9 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, type Href, useFocusEffect } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { imageFor } from '@/constants/images';
 import { showAlert } from '@/utils/alert';
@@ -43,7 +42,7 @@ export default function ManagePriceScreen() {
         router.replace('/');
         return;
       }
-      const res = await axios.get(`${API_URL}/protected/menu-items`, {
+      const res = await api.get(API_ROUTES.MENU_ITEMS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const dbItems: { id: number; name: string; price: number }[] = res.data?.items || [];
@@ -187,7 +186,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 23,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 24,
@@ -234,6 +233,7 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   itemName: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 12,
     color: '#1f2937',
     lineHeight: 15,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   },
   itemPrice: {
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
   editIconBtn: {

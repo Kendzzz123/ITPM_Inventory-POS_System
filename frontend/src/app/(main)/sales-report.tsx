@@ -11,9 +11,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { showAlert } from '@/utils/alert';
 
@@ -45,12 +44,19 @@ export default function SalesReportScreen() {
   const [maxScale, setMaxScale] = useState<number>(8);
   const [loading, setLoading] = useState(true);
 
+  const setFallback = () => {
+    setSalesData([
+      { label: 'No Data', value: 0 },
+    ]);
+    setMaxScale(8);
+  };
+
   const loadReport = useCallback(async (selectedPeriod: Period) => {
     setLoading(true);
     try {
       const token = await getToken();
-      const res = await axios.get(
-        `${API_URL}/protected/sales-report?period=${selectedPeriod}`,
+      const res = await api.get(
+        `${API_ROUTES.SALES_REPORT}?period=${selectedPeriod}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -69,13 +75,6 @@ export default function SalesReportScreen() {
       setLoading(false);
     }
   }, []);
-
-  const setFallback = () => {
-    setSalesData([
-      { label: 'No Data', value: 0 },
-    ]);
-    setMaxScale(8);
-  };
 
   useEffect(() => {
     loadReport(period);
@@ -137,7 +136,7 @@ export default function SalesReportScreen() {
                     <Text
                       style={[
                         styles.dropdownOptionText,
-                        isSelected && { color: '#ef0000', fontWeight: '600' },
+                        isSelected && { color: '#ef0000', fontFamily: 'Poppins_600SemiBold' },
                       ]}
                     >
                       {item}
@@ -158,7 +157,7 @@ export default function SalesReportScreen() {
               <View style={styles.gridOverlay}>
                 {gridSteps.map((val, idx) => (
                   <View key={idx} style={styles.gridRow}>
-                    <Text style={styles.axisLabel}>{val}</Text>
+                    <Text style={styles.axisLabel} numberOfLines={1}>{val}</Text>
                     <View
                       style={[
                         styles.gridLine,
@@ -231,7 +230,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 23,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 28,
@@ -243,6 +242,7 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   filterLabel: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 12,
     color: '#1f2937',
     marginBottom: 6,
@@ -260,6 +260,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   selectText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11.5,
     color: '#374151',
   },
@@ -283,6 +284,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   dropdownOptionText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 12,
     color: '#1f2937',
   },
@@ -310,7 +312,8 @@ const styles = StyleSheet.create({
     marginVertical: -8,
   },
   axisLabel: {
-    width: 18,
+    fontFamily: 'Poppins_400Regular',
+    width: 30, // room for 4-digit totals (e.g. 1250) without wrapping
     fontSize: 9,
     color: '#1f2937',
     textAlign: 'right',
@@ -326,7 +329,7 @@ const styles = StyleSheet.create({
   },
   barsRow: {
     position: 'absolute',
-    left: 20,
+    left: 32,
     right: 0,
     bottom: 0,
     height: CHART_HEIGHT,
@@ -349,7 +352,7 @@ const styles = StyleSheet.create({
   },
   xAxisLabelsRow: {
     flexDirection: 'row',
-    marginLeft: 20,
+    marginLeft: 32,
     marginTop: 6,
     justifyContent: 'space-between',
   },
@@ -359,6 +362,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   barLabel: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 8.5,
     color: '#1f2937',
     textAlign: 'center',

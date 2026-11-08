@@ -59,6 +59,7 @@ CREATE TABLE Stock_Items (
   Unit              ENUM('kg','pcs','L','g','packs') NOT NULL,
   Current_Quantity  DECIMAL(12,3) NOT NULL DEFAULT 0,   -- controlled balance; only changed together with a ledger row
   Minimum_Level     DECIMAL(12,3) NOT NULL DEFAULT 0,
+  Is_Active         BOOLEAN NOT NULL DEFAULT TRUE,        -- hide (never delete) stock that is not a POS menu item
   CONSTRAINT uq_stock_name UNIQUE (Stock_Name),
   CONSTRAINT ck_stock_qty CHECK (Current_Quantity >= 0),
   CONSTRAINT ck_stock_min CHECK (Minimum_Level >= 0)

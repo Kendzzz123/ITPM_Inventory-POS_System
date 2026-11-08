@@ -20,10 +20,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { PROTECTED_ENDPOINTS } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { useStockItems } from '@/hooks/useStockItems';
 import { getToken, clearToken } from '@/services/authService';
 import { todaySlashDate, newRequestId } from '@/constants/app';
@@ -78,7 +77,7 @@ export default function RecordWasteScreen() {
   };
 
   const handleOpenConfirm = () => {
-    Keyboard.dismiss();
+    
     setDropdownOpen(false);
     if (dateStr && !isValidPastDate(dateStr)) {
       showAlert('Invalid Date', 'Please enter a valid date (mm/dd/yyyy) that is not in the future.');
@@ -103,8 +102,8 @@ export default function RecordWasteScreen() {
         router.replace(ROUTES.LOGIN);
         return;
       }
-      await axios.post(
-        PROTECTED_ENDPOINTS.WASTE,
+      await api.post(
+        API_ROUTES.WASTE,
         {
           stockId: stockIdFor(selectedItem),
           itemName: selectedItem,
@@ -137,7 +136,7 @@ export default function RecordWasteScreen() {
       <StatusBar barStyle="dark-content" />
       <TouchableWithoutFeedback
         onPress={() => {
-          Keyboard.dismiss();
+          
           setDropdownOpen(false);
         }}
         accessible={false}
@@ -198,7 +197,7 @@ export default function RecordWasteScreen() {
                   style={styles.selectBox}
                   activeOpacity={0.85}
                   onPress={() => {
-                    Keyboard.dismiss();
+                   
                     setDropdownOpen((open) => !open);
                   }}
                 >

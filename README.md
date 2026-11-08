@@ -63,15 +63,22 @@ npm install
 npx expo start
 ```
 
-On a phone, the API address is detected from the Expo dev server automatically.
-If that fails, change `FALLBACK_HOST_IP` in `frontend/src/config/apiConfig.ts`
-(or set `EXPO_PUBLIC_API_URL`).
+No IP address needs to be typed anywhere. The app finds the backend by itself
+(`frontend/src/config/apiConfig.ts`, the only file that knows the server address):
+the PC running the Expo dev server first, then the last server the phone used,
+then a search of the phone's Wi-Fi for the PC answering `/health` on port 3000.
+Keep the phone on the same Wi-Fi as the backend PC. For a hosted backend, set
+`EXPO_PUBLIC_API_URL` in `frontend/.env` instead.
 
 ## Notes
 
 - Stock quantities start at 0 — use **Restock** to add stock before selling.
+- The stock items are the POS menu items (same names). Any other stock item (e.g. the
+  old Raw Chicken / Raw Pork) is hidden from Stocks, Restock, Record Waste and Waste
+  History; its past records stay in the database. Half Juicy Chicken has no stock of
+  its own — it uses 0.5 of Whole Juicy Chicken (10 whole chickens = 10 wholes or 20 halves).
 - Each menu item has a **portion**: how much stock one order uses (e.g. Half Juicy
-  Chicken = 0.5 pcs Raw Chicken). Every sale deducts it, and the POS shows how many
+  Chicken = 0.5 Whole Juicy Chicken). Every sale deducts it, and the POS shows how many
   orders are left and blocks items that are out of stock. Change portions in
   **Manage Price → Edit Price → Portion per order**. Starting values are in
   `backend/src/config/catalog.js`.

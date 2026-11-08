@@ -16,6 +16,7 @@ const pool = require('../config/db');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const { positiveNumber, idParam } = require('../utils/helpers');
+const { menuOrder } = require('../config/catalog');
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.get('/menu-items', async (req, res) => {
     `SELECT r.Item_ID AS itemId, s.Stock_ID AS stockId, s.Stock_Name AS stockName, s.Unit AS unit,
             r.Quantity_Used AS quantityUsed, s.Current_Quantity AS inStock
        FROM Recipe_Portions r
-       JOIN Stock_Items s ON s.Stock_ID = r.Stock_ID`
+       JOIN Stock_Items s ON s.Stock_ID = r.Stock_ID AND s.Is_Active = 1`
   );
 
   const result = items.map((item) => {
@@ -50,6 +51,8 @@ router.get('/menu-items', async (req, res) => {
       : null;
     return { ...item, price: Number(item.price), portions: mine, available };
   });
+  // Menu order from catalog.js (items added later sit with their kind, not at the end).
+  result.sort((a, b) => menuOrder(a.name) - menuOrder(b.name));
 
   return res.json({ items: result });
 });
@@ -78,7 +81,9 @@ router.put('/menu-items/:id/portion', authorizeRoles('manager'), async (req, res
 
   const [[item]] = await pool.query('SELECT Item_ID FROM Menu_Items WHERE Item_ID = ?', [id]);
   if (!item) throw new HttpError(404, 'Menu item not found.');
-  const [[stock]] = await pool.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_ID = ?', [stockId]);
+  const [[stock]] = await pool.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_ID = ? AND Is_Active = 1', [
+    stockId,
+  ]);
   if (!stock) throw new HttpError(404, 'Stock item not found.');
 
   const conn = await pool.getConnection();
@@ -106,4 +111,5 @@ module.exports = router;
 
 // TEST: GET returns available = floor(stock / quantityUsed); null when no portion is set
 // TEST: PUT portion with quantityUsed 0 -> 400; unknown stockId -> 404; valid -> replaces old row
-// TEST: a sale of 2 Half Juicy Chicken deducts 1 Raw Chicken (2 x 0.5)
+// TEST: a sale of 2 Half Juicy Chicken deducts 1 Whole Juicy Chicken (2 x 0.5)
+// TEST: PUT portion with a hidden stock (Is_Active = 0) -> 404

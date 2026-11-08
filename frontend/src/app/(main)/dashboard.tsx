@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   RefreshControl,
   StyleSheet,
@@ -6,16 +6,13 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  Animated,
-  useWindowDimensions,
-  Modal,
   StatusBar,
   Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons, Feather, } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import {
   useFonts,
   Poppins_400Regular,
@@ -24,11 +21,11 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
 import { setGlobalUserRole } from '@/store/appState';
+import { toStockLevel, joinNames, type StockLevel } from '@/utils/stock';
 
 
 // 4.1 Color Palette Specification
@@ -94,6 +91,7 @@ export default function DashboardScreen() {
   const [maxScale, setMaxScale] = useState<number>(8);
   const [totalSold, setTotalSold] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [lowStock, setLowStock] = useState<StockLevel[]>([]);
 
   // Drawer & Logout Confirmation State
   const [menuVisible, setMenuVisible] = useState(false);
@@ -108,7 +106,7 @@ export default function DashboardScreen() {
       }
 
       const headers = { Authorization: `Bearer ${token}` };
-      const profileRes = await axios.get(`${API_URL}/protected/profile`, { headers });
+      const profileRes = await api.get(API_ROUTES.PROFILE, { headers });
       const loggedUser = profileRes.data?.user;
       setGlobalUserRole(loggedUser?.role);
 
@@ -119,8 +117,16 @@ export default function DashboardScreen() {
       }
 
       // Real data only — an empty chart/table means there are no sales yet.
-      const reportRes = await axios.get(`${API_URL}/protected/dashboard-report`, { headers });
+      // Stock is fetched alongside; if only that call fails the dashboard still loads.
+      const [reportRes, stockRes] = await Promise.all([
+        api.get(API_ROUTES.DASHBOARD_REPORT, { headers }),
+        api.get(API_ROUTES.STOCKS, { headers }).catch(() => null),
+      ]);
       setMe(loggedUser);
+      if (stockRes) {
+        const stocks = ((stockRes.data?.stocks || []) as unknown[]).map(toStockLevel);
+        setLowStock(stocks.filter((s) => s.isLow));
+      }
 
       const fetchedSales: SalesItem[] = reportRes.data?.salesData || [];
       setSalesData(fetchedSales);
@@ -151,9 +157,13 @@ export default function DashboardScreen() {
     }
   }, [router]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Reload whenever the dashboard comes back into view (e.g. after a restock),
+  // so the low-stock notice and today's sales are current.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -245,6 +255,9 @@ export default function DashboardScreen() {
               
             </View>
 
+            {/* Low-stock notice (E2E-02) */}
+            
+
             {/* Sales Report Title */}
             <Text style={styles.sectionTitle}>Sales Report</Text>
 
@@ -255,7 +268,7 @@ export default function DashboardScreen() {
                 <View style={styles.gridOverlay}>
                   {gridSteps.map((val, idx) => (
                     <View key={idx} style={styles.gridRow}>
-                      <Text style={styles.axisLabel}>{val}</Text>
+                      <Text style={styles.axisLabel} numberOfLines={1}>{val}</Text>
                       <View
                         style={[
                           styles.gridLine,
@@ -489,6 +502,32 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     marginLeft: 12,
   },
+  lowStockCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 22,
+  },
+  lowStockTextWrap: {
+    flex: 1,
+  },
+  lowStockTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13.5,
+    color: '#991B1B',
+  },
+  lowStockNames: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: '#991B1B',
+    marginTop: 2,
+  },
   /* Sales Report Chart Styles */
   chartContainer: {
     width: '100%',
@@ -514,7 +553,7 @@ const styles = StyleSheet.create({
     marginVertical: -8,
   },
   axisLabel: {
-    width: 24,
+    width: 38, // room for 4-digit totals (e.g. 1250) without wrapping
     fontFamily: 'Poppins_400Regular',
     fontSize: 11,
     color: COLORS.nearBlack,
@@ -531,7 +570,7 @@ const styles = StyleSheet.create({
   },
   barsRow: {
     position: 'absolute',
-    left: 26,
+    left: 40,
     right: 0,
     bottom: 0,
     height: CHART_HEIGHT,
@@ -554,7 +593,7 @@ const styles = StyleSheet.create({
   },
   xAxisLabelsRow: {
     flexDirection: 'row',
-    marginLeft: 26,
+    marginLeft: 40,
     marginTop: 8,
     justifyContent: 'space-between',
   },

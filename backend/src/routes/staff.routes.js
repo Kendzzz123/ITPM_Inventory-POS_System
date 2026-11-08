@@ -16,7 +16,14 @@ const pool = require('../config/db');
 const env = require('../config/env');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
-const { slashDateToSql, idParam, isValidEmail } = require('../utils/helpers');
+const {
+  slashDateToSql,
+  localDateSql,
+  idParam,
+  isValidEmail,
+  assertValidName,
+  assertValidPhone,
+} = require('../utils/helpers');
 const { assertPasswordLength } = require('./auth.routes');
 
 const router = express.Router();
@@ -29,12 +36,10 @@ function clean(value, max) {
   return s === '' ? null : s.slice(0, max);
 }
 
-/** Validates optional email/phone fields shared by create and edit. */
+/** Validates optional email/phone fields shared by create and edit (empty = not given). */
 function validateContact({ email, phone }) {
   if (email && !isValidEmail(email)) throw new HttpError(400, 'Please enter a valid email address.');
-  if (phone && !/^[0-9+\-\s]{7,20}$/.test(phone)) {
-    throw new HttpError(400, 'Phone number may only contain digits, spaces, + and -.');
-  }
+  if (phone) assertValidPhone(phone);
 }
 
 /** Builds a unique username from a full name, e.g. "Juan Dela Cruz" -> "juandelacruz", "juandelacruz2". */
@@ -78,10 +83,11 @@ router.post('/staff', managerOnly, async (req, res) => {
   const password = String(req.body?.password || '');
 
   if (!name) throw new HttpError(400, 'Name is required.');
+  assertValidName(name);
   assertPasswordLength(password);
   validateContact({ email, phone });
 
-  const employmentDate = slashDateToSql(req.body?.employmentDate) || new Date().toISOString().slice(0, 10);
+  const employmentDate = slashDateToSql(req.body?.employmentDate) || localDateSql();
   const username = await uniqueUsername(name);
   const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
 
@@ -104,6 +110,7 @@ router.put('/staff/:id', async (req, res) => {
   const name = clean(req.body?.name, 100);
   const email = clean(req.body?.email, 150);
   const phone = clean(req.body?.phone, 20);
+  if (name) assertValidName(name); // empty name = keep the current one
   validateContact({ email, phone });
   const employmentDate = slashDateToSql(req.body?.employmentDate);
 
@@ -166,5 +173,6 @@ module.exports = router;
 
 // TEST: POST /staff generates "name", then "name2" for a duplicate name
 // TEST: PATCH suspend with days=6 sets Suspended_Until ~6 days ahead; status=active clears it
-// TEST: DELETE staff with orders -> 400 with "Suspend them instead"
+// TEST: DELETE staff with orders -> 200; their orders stay with User_ID = NULL
 // TEST: cashier calling PUT /staff/:otherId -> 403
+// TEST: POST/PUT staff with name "Juan2" or phone "+63917123456" (12 chars) -> 400; "Jennifer 8. Lee" and "+639171234567" -> OK

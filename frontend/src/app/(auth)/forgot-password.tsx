@@ -7,16 +7,13 @@ import {
   Pressable, 
   KeyboardAvoidingView, 
   Platform, 
-  TouchableWithoutFeedback,
-  Keyboard,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 
 
 export default function ForgotPasswordScreen() {
@@ -32,7 +29,7 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/auth/forgot-password`, {
+      await api.post(API_ROUTES.FORGOT_PASSWORD, {
         email: email.trim(),
       });
 
@@ -57,61 +54,59 @@ export default function ForgotPasswordScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.screen}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.card}>
-          <Pressable onPress={() => router.replace('/')}>
-            <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
-          </Pressable>
+      <View style={styles.card}>
+        <Pressable onPress={() => router.replace('/')}>
+          <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
+        </Pressable>
 
-          <View style={styles.new}>
-            <View style={styles.circleContainer}>
-              <MaterialCommunityIcons
-                name="key-variant"
-                size={32}
-                color="#ec0000"
-                style={styles.verticalKey}
-              />
-            </View>
-          </View>
-
-          {/* Bottom Form Section */}
-          <View style={styles.formContainer}>
-            <Text style={styles.title}>Forgot Password?</Text>
-            <Text style={styles.subtitle}>Enter your email and we’ll send you a 6-digit code.</Text>
-
-            {/* Email Field */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="manager@example.com"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
-                editable={!loading}
-              />
-            </View>
-
-            {/* Red Send Code Button */}
-            <Pressable 
-              style={({ pressed }) => [
-                styles.SendCodeButton,
-                pressed && styles.SendCodeButtonPressed
-              ]}
-              onPress={handleSendCode}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.SendCode}>Send code</Text>
-              )}
-            </Pressable>
+        <View style={styles.new}>
+          <View style={styles.circleContainer}>
+            <MaterialCommunityIcons
+              name="key-variant"
+              size={32}
+              color="#ec0000"
+              style={styles.verticalKey}
+            />
           </View>
         </View>
-      </TouchableWithoutFeedback>
+
+        {/* Bottom Form Section */}
+        <View style={styles.formContainer}>
+          <Text style={styles.title}>Forgot Password?</Text>
+          <Text style={styles.subtitle}>Enter your email and we’ll send you a 6-digit code.</Text>
+
+          {/* Email Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="manager@example.com"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              editable={!loading}
+            />
+          </View>
+
+          {/* Red Send Code Button */}
+          <Pressable 
+            style={({ pressed }) => [
+              styles.SendCodeButton,
+              pressed && styles.SendCodeButtonPressed
+            ]}
+            onPress={handleSendCode}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.SendCode}>Send code</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
     </KeyboardAvoidingView>
   );
 }

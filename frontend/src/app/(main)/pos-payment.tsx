@@ -20,9 +20,8 @@ import {
   Poppins_700Bold,
   Poppins_700Bold_Italic,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
@@ -140,8 +139,8 @@ export default function PosPaymentScreen() {
         router.replace('/');
         return;
       }
-      await axios.post(
-        `${API_URL}/protected/orders`,
+      await api.post(
+        API_ROUTES.ORDERS,
         {
           items: parsedItems,
           amountReceived: numericCash,

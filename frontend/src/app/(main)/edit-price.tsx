@@ -15,11 +15,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-import PortionEditor from '@/components/PortionEditor';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
 import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_700Bold } from '@expo-google-fonts/poppins';
 
@@ -91,8 +89,8 @@ export default function EditPriceScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.put(
-        `${API_URL}/protected/menu-items/${itemId}`,
+      await api.put(
+        API_ROUTES.menuItem(itemId),
         { price: Number(inputPrice) },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -198,8 +196,6 @@ export default function EditPriceScreen() {
             <Text style={styles.saveBtnText}>Save Changes</Text>
           </TouchableOpacity>
 
-          {/* How much stock one order uses */}
-          <PortionEditor itemId={itemId} itemName={itemName} />
         </View>
       </ScrollView>
 
@@ -280,7 +276,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 20,
@@ -310,6 +306,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   previewItemName: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 15,
     color: '#1f2937',
     flex: 1,
@@ -319,13 +316,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   currentPriceLabel: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11.5,
     color: '#374151',
     marginBottom: 2,
   },
   currentPriceValue: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
   inputDisplayBox: {
@@ -343,7 +341,7 @@ const styles = StyleSheet.create({
   },
   inputValueText: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
   keypadContainer: {
@@ -372,7 +370,7 @@ const styles = StyleSheet.create({
   },
   keyText: {
     fontSize: 20,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
   saveBtn: {
@@ -387,7 +385,7 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#ffffff',
     fontSize: 12.5,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
   },
   priceModalBackdrop: {
     flex: 1,
@@ -418,6 +416,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fffdf7',
   },
   priceModalPrompt: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 16,
     color: '#ef0000',
     textAlign: 'center',
@@ -443,7 +442,7 @@ const styles = StyleSheet.create({
   priceCancelBtnText: {
     color: '#ef0000',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   priceConfirmBtn: {
     flex: 1,
@@ -456,7 +455,7 @@ const styles = StyleSheet.create({
   priceConfirmBtnText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   drawerOverlay: {
     flex: 1,

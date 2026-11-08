@@ -25,10 +25,9 @@ import {
   Poppins_700Bold,
   Poppins_700Bold_Italic,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
 
 
@@ -76,7 +75,7 @@ export default function StaffManagementScreen() {
         router.replace('/');
         return;
       }
-      const res = await axios.get(`${API_URL}/protected/staff`, {
+      const res = await api.get(API_ROUTES.STAFF, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setStaffList(res.data?.staff || []);
@@ -127,8 +126,8 @@ export default function StaffManagementScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.patch(
-        `${API_URL}/protected/staff/${selectedStaff.id}/suspend`,
+      await api.patch(
+        API_ROUTES.staffSuspend(selectedStaff.id),
         { status: 'active' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -150,7 +149,7 @@ export default function StaffManagementScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.delete(`${API_URL}/protected/staff/${selectedStaff.id}`, {
+      await api.delete(API_ROUTES.staffMember(selectedStaff.id), {
         headers: { Authorization: `Bearer ${token}` },
       });
       setStaffList((prev) => prev.filter((s) => s.id !== selectedStaff.id));

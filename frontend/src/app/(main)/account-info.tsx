@@ -23,9 +23,8 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { showAlert } from '@/utils/alert';
 import { getToken, clearToken } from '@/services/authService';
 
@@ -79,7 +78,7 @@ export default function AccountInfoScreen() {
   const loadAccount = useCallback(async () => {
     try {
       const token = await getToken();
-      const res = await axios.get(`${API_URL}/protected/account`, {
+      const res = await api.get(API_ROUTES.ACCOUNT, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.data?.account) {
@@ -98,7 +97,7 @@ export default function AccountInfoScreen() {
       const status = err.response?.status;
       if (status === 401 || status === 403) {
         await clearToken();
-        router.replace('/');
+        router.replace('/dashboard');
         return;
       }
       showAlert('Error', err.response?.data?.message || 'Could not load account information.');
@@ -137,7 +136,7 @@ export default function AccountInfoScreen() {
           {/* Top Bar */}
           <View style={styles.topBar}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => router.replace('/(main)/dashboard')}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />

@@ -13,10 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 
 
@@ -42,8 +41,8 @@ export default function SuspendStaffScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.patch(
-        `${API_URL}/protected/staff/${staffId}/suspend`,
+      await api.patch(
+        API_ROUTES.staffSuspend(staffId),
         { status: 'suspended', days: Number(days) },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -178,7 +177,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 23,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 24,
@@ -194,6 +193,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   staffName: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 15,
     color: '#111827',
     textAlign: 'center',
@@ -205,8 +205,8 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   italicLabel: {
+    fontFamily: 'Poppins_400Regular_Italic',
     fontSize: 11,
-    fontStyle: 'italic',
     color: '#1f2937',
     marginBottom: 6,
     marginLeft: 6,
@@ -221,6 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   daysInput: {
+    fontFamily: 'Poppins_400Regular',
     width: '100%',
     textAlign: 'center',
     fontSize: 16,
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
   confirmMainBtnText: {
     color: '#ffffff',
     fontSize: 12.5,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
   },
   modalBackdrop: {
     flex: 1,
@@ -269,6 +270,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fffdf7',
   },
   modalPrompt: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 16,
     color: '#ef0000',
     textAlign: 'center',
@@ -294,7 +296,7 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     color: '#ef0000',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   confirmBtn: {
     flex: 1,
@@ -307,6 +309,6 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
 });

@@ -23,11 +23,14 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
+import { imageFor } from '@/constants/images';
+
+/** Stock shown on the cashier home cards (names match the POS menu and Stocks page). */
+const FEATURED_STOCK = ['Whole Juicy Chicken', 'Liempo'];
 
 
 const COLORS = {
@@ -52,8 +55,9 @@ export default function CashierDashboardScreen() {
   });
 
   const [userName, setUserName] = useState('');
-  const [chickenStock, setChickenStock] = useState(0);
-  const [porkStock, setPorkStock] = useState(0);
+  const [featuredStock, setFeaturedStock] = useState(
+    FEATURED_STOCK.map((name) => ({ name, quantity: 0 }))
+  );
   const [alertMessage, setAlertMessage] = useState('');
   const [darkMode, setDarkMode] = useState(getDarkMode());
   const [loading, setLoading] = useState(true);
@@ -82,8 +86,8 @@ export default function CashierDashboardScreen() {
 
       const headers = { Authorization: `Bearer ${token}` };
       const [accRes, stockRes] = await Promise.all([
-        axios.get(`${API_URL}/protected/account`, { headers }),
-        axios.get(`${API_URL}/protected/stocks`, { headers }),
+        api.get(API_ROUTES.ACCOUNT, { headers }),
+        api.get(API_ROUTES.STOCKS, { headers }),
       ]);
 
       const account = accRes.data?.account;
@@ -92,10 +96,14 @@ export default function CashierDashboardScreen() {
 
       const list: { name: string; quantity: number; minLevel: number }[] =
         stockRes.data?.stocks || [];
-      const chk = list.find((s) => s.name.toLowerCase().includes('chicken'));
-      const prk = list.find((s) => s.name.toLowerCase().includes('pork'));
-      setChickenStock(Number(chk?.quantity ?? 0));
-      setPorkStock(Number(prk?.quantity ?? 0));
+      setFeaturedStock(
+        FEATURED_STOCK.map((name) => ({
+          name,
+          quantity: Number(
+            list.find((s) => s.name.toLowerCase() === name.toLowerCase())?.quantity ?? 0
+          ),
+        }))
+      );
 
       const lowItems = list.filter((s) => s.quantity <= s.minLevel).map((s) => s.name);
       if (lowItems.length === 0) {
@@ -185,37 +193,26 @@ export default function CashierDashboardScreen() {
           <Text style={[styles.sectionTitle, textColor]}>Inventory</Text>
 
           <View style={styles.inventoryGrid}>
-            <View style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}>
-              <View style={styles.imageArea}>
-                <Image
-                  source={{
-                    uri: 'https://images.unsplash.com/photo-1587593810167-a84920ea0781?auto=format&fit=crop&w=400&q=80',
-                  }}
-                  style={styles.stockImg}
-                  resizeMode="contain"
-                />
+            {featuredStock.map((item) => (
+              <View
+                key={item.name}
+                style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+              >
+                <View style={styles.imageArea}>
+                  <Image
+                    source={{ uri: imageFor(item.name) }}
+                    style={styles.stockImg}
+                    resizeMode="contain"
+                  />
+                </View>
+                <View style={styles.stockFooter}>
+                  <Text style={styles.stockName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.stockCount}>{item.quantity}</Text>
+                </View>
               </View>
-              <View style={styles.stockFooter}>
-                <Text style={styles.stockName}>Raw Chicken</Text>
-                <Text style={styles.stockCount}>{chickenStock}</Text>
-              </View>
-            </View>
-
-            <View style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}>
-              <View style={styles.imageArea}>
-                <Image
-                  source={{
-                    uri: 'https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?auto=format&fit=crop&w=400&q=80',
-                  }}
-                  style={styles.stockImg}
-                  resizeMode="contain"
-                />
-              </View>
-              <View style={styles.stockFooter}>
-                <Text style={styles.stockName}>Raw Pork</Text>
-                <Text style={styles.stockCount}>{porkStock}</Text>
-              </View>
-            </View>
+            ))}
           </View>
 
           {/* Warning Banner */}
@@ -366,6 +363,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   stockName: {
+    flexShrink: 1,
+    marginRight: 6,
     fontFamily: 'Poppins_400Regular',
     fontSize: 10.5,
     color: COLORS.nearBlack,

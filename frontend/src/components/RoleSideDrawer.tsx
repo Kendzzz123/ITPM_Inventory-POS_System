@@ -9,7 +9,7 @@
  *   const [menuVisible, setMenuVisible] = useState(false);
  *   <RoleSideDrawer visible={menuVisible} onClose={() => setMenuVisible(false)} />
  */
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   Animated,
   Modal,
@@ -114,7 +114,9 @@ export default function RoleSideDrawer({
   const darkMode = darkModeProp ?? storeDark;
   const toggleDarkMode = onToggleDarkMode ?? (() => setGlobalDarkMode(!darkMode));
 
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  // useState keeps one Animated.Value for the component's life (reading a
+  // ref's .current during render is not allowed with the React Compiler).
+  const [slideAnim] = useState(() => new Animated.Value(DRAWER_WIDTH));
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
   const isCashier = role === 'cashier';

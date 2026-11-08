@@ -14,33 +14,41 @@ const pool = require('../config/db');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const { positiveNumber, newRequestId } = require('../utils/helpers');
+const { menuOrder } = require('../config/catalog');
 
 const router = express.Router();
 
 /**
- * Resolves a stock item from either stockId or itemName. Never creates items.
+ * Resolves an active (visible) stock item from either stockId or itemName.
+ * Hidden stock (Raw Chicken, Raw Pork, ...) can't be restocked or wasted.
+ * Never creates items.
  * @returns {Promise<number>} Stock_ID
  */
 async function resolveStockId(conn, { stockId, itemName }) {
   if (stockId) {
-    const [rows] = await conn.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_ID = ?', [stockId]);
+    const [rows] = await conn.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_ID = ? AND Is_Active = 1', [
+      stockId,
+    ]);
     if (rows.length) return rows[0].Stock_ID;
   } else if (itemName) {
-    const [rows] = await conn.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_Name = ? LIMIT 1', [
-      String(itemName).trim(),
-    ]);
+    const [rows] = await conn.query(
+      'SELECT Stock_ID FROM Stock_Items WHERE Stock_Name = ? AND Is_Active = 1 LIMIT 1',
+      [String(itemName).trim()]
+    );
     if (rows.length) return rows[0].Stock_ID;
   }
   throw new HttpError(404, 'Stock item not found.');
 }
 
-// GET /protected/stocks
+// GET /protected/stocks — visible stock only, in POS menu order
 router.get('/stocks', async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT Stock_ID AS id, Stock_Name AS name, Unit AS unit,
-            Current_Quantity AS quantity, Minimum_Level AS minLevel
-       FROM Stock_Items
-      ORDER BY Stock_ID ASC`
+    `SELECT s.Stock_ID AS id, s.Stock_Name AS name, s.Unit AS unit,
+            s.Current_Quantity AS quantity, s.Minimum_Level AS minLevel
+       FROM Stock_Items s
+       LEFT JOIN Menu_Items m ON m.Item_Name = s.Stock_Name
+      WHERE s.Is_Active = 1
+      ORDER BY COALESCE(m.Item_ID, 999999), s.Stock_ID`
   );
   const stocks = rows.map((r) => ({
     ...r,
@@ -48,6 +56,7 @@ router.get('/stocks', async (req, res) => {
     minLevel: Number(r.minLevel),
     isLow: Number(r.quantity) <= Number(r.minLevel),
   }));
+  stocks.sort((a, b) => menuOrder(a.name) - menuOrder(b.name)); // same order as the POS menu
   return res.json({ stocks, hasLowStock: stocks.some((s) => s.isLow) });
 });
 
@@ -109,6 +118,7 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
             w.Reason AS reason
        FROM Waste_Log w
        JOIN Stock_Items s ON w.Stock_ID = s.Stock_ID
+      WHERE s.Is_Active = 1 -- old Raw Chicken / Raw Pork / ... waste stays in the DB, just not listed
       ORDER BY w.Date DESC, w.Waste_ID DESC`
   );
   return res.json({ history: rows });
@@ -117,4 +127,5 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
 module.exports = router;
 
 // TEST: restock with unknown itemName -> 404 and no Purchase_Orders row is created
+// TEST: stocks / restock / waste / waste-history ignore hidden stock (Is_Active = 0)
 // TEST: waste larger than the balance -> 400 "Unknown stock item or waste exceeds balance"

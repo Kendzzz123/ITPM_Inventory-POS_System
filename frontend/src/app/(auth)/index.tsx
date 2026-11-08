@@ -9,8 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  TouchableWithoutFeedback,
-  Keyboard,
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
@@ -23,9 +21,8 @@ import {
   Poppins_500Medium,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { saveToken, clearToken } from '@/services/authService';
 import { setCurrentUser, setGlobalUserRole } from '@/store/appState';
 import { DEFAULT_PASSWORDS } from '@/constants/app';
@@ -54,21 +51,38 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Which input the error belongs to, so it can be outlined and the message shown under it.
+  const [errorField, setErrorField] = useState<'email' | 'password' | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  /** Shows an error under one field (or under the form when field is null). */
+  const showError = (message: string, field: 'email' | 'password' | null, title = 'Login Failed') => {
+    setErrorMsg(message);
+    setErrorField(field);
+    if (Platform.OS !== 'web') {
+      showAlert(title, message);
+    }
+  };
+
+  const clearError = () => {
     setErrorMsg(null);
-    if (!email.trim() || !password) {
-      setErrorMsg('Please enter your email and password.');
-      if (Platform.OS !== 'web') {
-        showAlert('Error', 'Please enter your email and password.');
-      }
+    setErrorField(null);
+  };
+
+  const handleLogin = async () => {
+    clearError();
+    if (!email.trim()) {
+      showError('Please enter your email.', 'email', 'Error');
+      return;
+    }
+    if (!password) {
+      showError('Please enter your password.', 'password', 'Error');
       return;
     }
 
 setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
+      const response = await api.post(API_ROUTES.LOGIN, {
         email: email.trim(),
         password: password,
       });
@@ -97,10 +111,9 @@ setLoading(true);
     } catch (error: any) {
       const message =
         error.response?.data?.message || error.message || 'Failed to connect to server';
-      setErrorMsg(message);
-      if (Platform.OS !== 'web') {
-        showAlert('Login Failed', message);
-      }
+      // The server says which field is wrong: 'email' (no such account) or 'password'.
+      const field = error.response?.data?.field;
+      showError(message, field === 'email' || field === 'password' ? field : null);
     } finally {
       setLoading(false);
     }
@@ -121,102 +134,109 @@ setLoading(true);
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContainer}
-            bounces={false}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.card}>
-              {/* Top Yellow Brand Banner */}
-              <View style={styles.banner}>
-                <Image
-                  source={require('@/assets/images/logo.png')}
-                  style={styles.logo}
-                  resizeMode="contain"
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.card}>
+            {/* Top Yellow Brand Banner */}
+            <View style={styles.banner}>
+              <Image
+                source={require('@/assets/images/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={styles.bannerSubtitle}>
+                Inventory system and POS
+              </Text>
+            </View>
+
+            {/* Bottom Form Section */}
+            <View style={styles.formContainer}>
+              <Text style={styles.title}>Welcome!</Text>
+              <Text style={styles.subtitle}>Please log in your account.</Text>
+
+              {/* Email Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={[styles.input, errorField === 'email' && styles.inputError]}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={(val) => {
+                    setEmail(val);
+                    clearError();
+                  }}
                 />
-                <Text style={styles.bannerSubtitle}>
-                  Inventory system and POS
-                </Text>
+                {errorField === 'email' && !!errorMsg && (
+                  <Text style={styles.fieldErrorText}>{errorMsg}</Text>
+                )}
               </View>
 
-              {/* Bottom Form Section */}
-              <View style={styles.formContainer}>
-                <Text style={styles.title}>Welcome!</Text>
-                <Text style={styles.subtitle}>Please log in your account.</Text>
-
-                {/* Email Field */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Email</Text>
+              {/* Password Field with Eye Icon */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Password</Text>
+                <View
+                  style={[styles.passwordContainer, errorField === 'password' && styles.inputError]}
+                >
                   <TextInput
-                    style={styles.input}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    value={email}
+                    style={styles.passwordInput}
+                    secureTextEntry={!showPassword}
+                    value={password}
                     onChangeText={(val) => {
-                      setEmail(val);
-                      setErrorMsg(null);
+                      setPassword(val);
+                      clearError();
                     }}
                   />
-                </View>
-
-                {/* Password Field with Eye Icon */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Password</Text>
-                  <View style={styles.passwordContainer}>
-                    <TextInput
-                      style={styles.passwordInput}
-                      secureTextEntry={!showPassword}
-                      value={password}
-                      onChangeText={(val) => {
-                        setPassword(val);
-                        setErrorMsg(null);
-                      }}
+                  <Pressable
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.eyeIconBtn}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color="#6B7280"
                     />
-                    <Pressable
-                      onPress={() => setShowPassword((prev) => !prev)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      style={styles.eyeIconBtn}
-                    >
-                      <Ionicons
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={22}
-                        color="#6B7280"
-                      />
-                    </Pressable>
-                  </View>
+                  </Pressable>
                 </View>
-
-                {/* Forgot Password Link */}
-                <Pressable
-                  style={styles.forgotContainer}
-                  onPress={() => router.push(ROUTES.FORGOT_PASSWORD)}
-                >
-                  <Text style={styles.forgotText}>Forgot Password</Text>
-                </Pressable>
-
-                {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
-
-                {/* Primary Red Log In Button */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.loginButton,
-                    pressed && styles.loginButtonPressed,
-                  ]}
-                  onPress={handleLogin}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={COLORS.white} />
-                  ) : (
-                    <Text style={styles.loginButtonText}>Log in</Text>
-                  )}
-                </Pressable>
+                {errorField === 'password' && !!errorMsg && (
+                  <Text style={styles.fieldErrorText}>{errorMsg}</Text>
+                )}
               </View>
+
+              {/* Forgot Password Link */}
+              <Pressable
+                style={styles.forgotContainer}
+                onPress={() => router.push(ROUTES.FORGOT_PASSWORD)}
+              >
+                <Text style={styles.forgotText}>Forgot Password</Text>
+              </Pressable>
+
+              {/* Errors not tied to one field (suspended account, server offline, ...) */}
+              {!!errorMsg && !errorField && <Text style={styles.errorText}>{errorMsg}</Text>}
+
+              {/* Primary Red Log In Button */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  pressed && styles.loginButtonPressed,
+                ]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.loginButtonText}>Log in</Text>
+                )}
+              </Pressable>
             </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -340,6 +360,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.red,
     textDecorationLine: 'underline',
+  },
+  inputError: {
+    borderColor: COLORS.red,
+  },
+  fieldErrorText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11.5,
+    color: COLORS.red,
+    marginTop: 4,
+    marginLeft: 2,
   },
   errorText: {
     fontFamily: 'Poppins_400Regular',

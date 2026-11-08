@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const pool = require('../config/db');
 const env = require('../config/env');
 const { sendOtpEmail } = require('../config/mailer');
-const { signToken } = require('../middleware/auth');
+const { signToken, refreshSuspension, suspendedMessage } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const rateLimit = require('../middleware/rateLimit');
 
@@ -33,7 +33,7 @@ const MAX_PASSWORD_LENGTH = 72;
  * returns faster than "wrong password", letting an attacker discover which
  * emails/usernames exist by timing the response.
  */
-const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-real-password', 10);
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-real-password', env.BCRYPT_ROUNDS);
 
 // Brute-force guards (per IP). Limits are configurable in .env.
 const loginLimiter = rateLimit({
@@ -55,24 +55,6 @@ function assertPasswordLength(password) {
   if (password.length > MAX_PASSWORD_LENGTH) {
     throw new HttpError(400, `Password must be at most ${MAX_PASSWORD_LENGTH} characters.`);
   }
-}
-
-/**
- * Lifts a timed suspension whose end date has passed.
- * @param {{ User_ID: number, Status: string, Suspended_Until: Date|null }} user
- * @returns {Promise<boolean>} true if the account is (now) active
- */
-async function refreshSuspension(user) {
-  if (user.Status !== 'suspended') return true;
-  if (user.Suspended_Until && new Date(user.Suspended_Until) <= new Date()) {
-    await pool.query(
-      "UPDATE Users SET Status = 'active', Suspended_Until = NULL WHERE User_ID = ?",
-      [user.User_ID]
-    );
-    user.Status = 'active';
-    return true;
-  }
-  return false;
 }
 
 /** Finds an active user by email (used by the OTP flow). */
@@ -152,19 +134,22 @@ router.post('/login', loginLimiter, async (req, res) => {
   );
   const user = rows[0];
 
-  // Always run one bcrypt compare (dummy hash when the user is missing) so the
-  // response takes the same time whether the account exists or not, and give
-  // the same message either way — no user enumeration by timing or wording.
+  // Always run one bcrypt compare (dummy hash when the user is missing) so both
+  // failures take the same time.
   const passwordOk = await bcrypt.compare(String(password), user ? user.Password_Hash : DUMMY_HASH);
-  if (!user || !passwordOk) {
-    throw new HttpError(401, 'Invalid email or password.');
+
+  // Specific messages so the user knows which field to fix. `field` tells the
+  // app which input to highlight. Trade-off: this reveals whether an email has
+  // an account; loginLimiter (per-IP rate limit) still slows down guessing.
+  if (!user) {
+    return res.status(401).json({ message: 'No account found with that email.', field: 'email' });
+  }
+  if (!passwordOk) {
+    return res.status(401).json({ message: 'Incorrect password. Please try again.', field: 'password' });
   }
 
   if (!(await refreshSuspension(user))) {
-    const until = user.Suspended_Until
-      ? ` until ${new Date(user.Suspended_Until).toLocaleDateString('en-US')}`
-      : '';
-    throw new HttpError(403, `Your account is currently suspended${until}.`);
+    throw new HttpError(403, suspendedMessage(user));
   }
 
   return res.json({
@@ -271,7 +256,8 @@ module.exports.MIN_PASSWORD_LENGTH = MIN_PASSWORD_LENGTH;
 module.exports.MAX_PASSWORD_LENGTH = MAX_PASSWORD_LENGTH;
 module.exports.assertPasswordLength = assertPasswordLength;
 
-// TEST: login -> 400 missing fields, 401 wrong password, 403 suspended, 200 with token
+// TEST: login -> 400 missing fields, 403 suspended, 200 with token
+// TEST: login unknown email -> 401 { field: 'email' }; wrong password -> 401 { field: 'password' }
 // TEST: login with a default password returns mustChangePassword = true
 // TEST: verify-otp increments Attempts on wrong code and locks after 5
 // TEST: reset-password marks the OTP 'used' so it cannot be replayed

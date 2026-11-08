@@ -2,7 +2,7 @@
  * @file PortionEditor.tsx
  * @description "Portion per order" card on Edit Price. Lets the manager set
  * which stock item ONE order of a menu item uses, and how much of it.
- * Example: Half Juicy Chicken -> 0.5 pcs of Raw Chicken.
+ * Example: Half Juicy Chicken -> 0.5 pcs of Whole Juicy Chicken.
  * Every POS sale deducts this amount from stock.
  */
 import React, { useCallback, useEffect, useState } from 'react';
@@ -15,8 +15,7 @@ import {
   View,
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import axios from 'axios';
-import { PROTECTED_ENDPOINTS } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { useStockItems } from '@/hooks/useStockItems';
 import { showAlert } from '@/utils/alert';
@@ -44,7 +43,7 @@ export default function PortionEditor({ itemId, itemName }: Props) {
     setLoading(true);
     try {
       const token = await getToken();
-      const res = await axios.get(PROTECTED_ENDPOINTS.MENU_ITEMS, {
+      const res = await api.get(API_ROUTES.MENU_ITEMS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const item = (res.data?.items || []).find((i: { id: number }) => String(i.id) === itemId);
@@ -79,8 +78,8 @@ export default function PortionEditor({ itemId, itemName }: Props) {
     setSaving(true);
     try {
       const token = await getToken();
-      await axios.put(
-        PROTECTED_ENDPOINTS.menuItemPortion(itemId),
+      await api.put(
+        API_ROUTES.menuItemPortion(itemId),
         { stockId, quantityUsed: qty },
         { headers: { Authorization: `Bearer ${token}` } }
       );

@@ -13,10 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { nameError, phoneError, emailError } from '@/utils/validation';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 
 
@@ -45,19 +45,31 @@ export default function EditStaffScreen() {
       ]);
       return;
     }
-    if (!name.trim()) {
-      showAlert('Missing Name', 'Please enter a name.');
+    // Guard clauses: stop at the first invalid field.
+    const nameProblem = nameError(name);
+    if (nameProblem) {
+      showAlert('Invalid Name', nameProblem);
+      return;
+    }
+    const phoneProblem = phoneError(phone);
+    if (phoneProblem) {
+      showAlert('Invalid Contact Number', phoneProblem);
+      return;
+    }
+    const emailProblem = emailError(email);
+    if (emailProblem) {
+      showAlert('Invalid Email', emailProblem);
       return;
     }
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.put(
-        `${API_URL}/protected/staff/${staffId}`,
+      await api.put(
+        API_ROUTES.staffMember(staffId),
         {
-          name,
-          phone,
-          email,
+          name: name.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
           employmentDate,
         },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -133,6 +145,9 @@ export default function EditStaffScreen() {
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
+                    maxLength={13}
+                    placeholder="09123456789"
+                    placeholderTextColor="#9ca3af"
                   />
                   <Feather name="edit-2" size={16} color="#6b7280" />
                 </View>
@@ -221,7 +236,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 18,
@@ -253,6 +268,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   label: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11,
     color: '#1f2937',
     marginBottom: 4,
@@ -269,6 +285,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   textInput: {
+    fontFamily: 'Poppins_400Regular',
     flex: 1,
     fontSize: 10.5,
     color: '#6b7280',
@@ -286,6 +303,6 @@ const styles = StyleSheet.create({
   submitBtnText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
   },
 });

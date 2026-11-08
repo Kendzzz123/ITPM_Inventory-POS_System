@@ -7,7 +7,6 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
 } from 'react-native';
@@ -15,9 +14,9 @@ import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { passwordError } from '@/utils/validation';
+import { api, API_ROUTES } from '@/config/apiConfig';
 
 
 export default function NewPasswordScreen() {
@@ -41,8 +40,9 @@ export default function NewPasswordScreen() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      showAlert('Password Length', 'Password must be at least 6 characters.');
+    const passwordProblem = passwordError(newPassword);
+    if (passwordProblem) {
+      showAlert('Password Length', passwordProblem);
       return;
     }
 
@@ -56,7 +56,7 @@ export default function NewPasswordScreen() {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/auth/reset-password`, {
+      const response = await api.post(API_ROUTES.RESET_PASSWORD, {
         email: params.email,
         otp: params.otp,
         newPassword: newPassword,
@@ -91,99 +91,97 @@ export default function NewPasswordScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.screen}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.card}>
-          <Pressable onPress={() => router.push({ pathname: '/otp', params: { email: params.email } })}>
-            <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
-          </Pressable>
+      <View style={styles.card}>
+        <Pressable onPress={() => router.push({ pathname: '/otp', params: { email: params.email } })}>
+          <MaterialIcons name="chevron-left" size={50} color="black" style={styles.backButton} />
+        </Pressable>
 
-          <View style={styles.new}>
-            <View style={styles.circleContainer}>
-              <MaterialCommunityIcons
-                name="lock"
-                size={32}
-                color="#ec0000"
-              />
-            </View>
-          </View>
-
-          {/* Form Section */}
-          <View style={styles.formContainer}>
-            <Text style={styles.title}>New Password</Text>
-            <Text style={styles.subtitle}>Kindly enter your new password</Text>
-
-            {/* New Password Field with Eye Icon */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>New Password</Text>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="New password (min. 6 characters)"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={!showNewPassword}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  editable={!loading}
-                />
-                <Pressable
-                  onPress={() => setShowNewPassword((prev) => !prev)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={styles.eyeIconBtn}
-                >
-                  <Ionicons
-                    name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color="#6B7280"
-                  />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Confirm New Password Field with Eye Icon */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Confirm New Password</Text>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Re-enter your password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={!showConfirmPassword}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  editable={!loading}
-                />
-                <Pressable
-                  onPress={() => setShowConfirmPassword((prev) => !prev)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={styles.eyeIconBtn}
-                >
-                  <Ionicons
-                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color="#6B7280"
-                  />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Confirm Button */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.SendCodeButton,
-                pressed && styles.SendCodeButtonPressed,
-              ]}
-              onPress={handleConfirm}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.SendCode}>Confirm</Text>
-              )}
-            </Pressable>
+        <View style={styles.new}>
+          <View style={styles.circleContainer}>
+            <MaterialCommunityIcons
+              name="lock"
+              size={32}
+              color="#ec0000"
+            />
           </View>
         </View>
-      </TouchableWithoutFeedback>
+
+        {/* Form Section */}
+        <View style={styles.formContainer}>
+          <Text style={styles.title}>New Password</Text>
+          <Text style={styles.subtitle}>Kindly enter your new password</Text>
+
+          {/* New Password Field with Eye Icon */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>New Password</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="New password (6-72 characters)"
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showNewPassword}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                editable={!loading}
+              />
+              <Pressable
+                onPress={() => setShowNewPassword((prev) => !prev)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.eyeIconBtn}
+              >
+                <Ionicons
+                  name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={22}
+                  color="#6B7280"
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Confirm New Password Field with Eye Icon */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Confirm New Password</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Re-enter your password"
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showConfirmPassword}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                editable={!loading}
+              />
+              <Pressable
+                onPress={() => setShowConfirmPassword((prev) => !prev)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.eyeIconBtn}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={22}
+                  color="#6B7280"
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Confirm Button */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.SendCodeButton,
+              pressed && styles.SendCodeButtonPressed,
+            ]}
+            onPress={handleConfirm}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.SendCode}>Confirm</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
     </KeyboardAvoidingView>
   );
 }

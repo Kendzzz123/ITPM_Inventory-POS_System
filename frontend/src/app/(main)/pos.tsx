@@ -21,9 +21,8 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES, getKnownApiUrl } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
@@ -99,7 +98,7 @@ export default function PosScreen() {
         router.replace('/');
         return;
       }
-      const res = await axios.get(`${API_URL}/protected/menu-items`, {
+      const res = await api.get(API_ROUTES.MENU_ITEMS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const dbItems: { id: number; name: string; price: number; portions?: Portion[] }[] =
@@ -120,7 +119,9 @@ export default function PosScreen() {
       }
       setMenuError(
         err.response?.data?.message ||
-          `Could not reach the server at ${API_URL}. Make sure the backend is running (npm start in the backend folder) and your phone is on the same Wi-Fi.`
+          (getKnownApiUrl()
+            ? `Could not reach the server at ${getKnownApiUrl()}. Make sure the backend is running (npm start in the backend folder) and your phone is on the same Wi-Fi.`
+            : err.message)
       );
     } finally {
       setMenuLoading(false);
@@ -136,7 +137,7 @@ export default function PosScreen() {
 
   /**
    * Orders of `item` that can still be added, after what is already in the cart.
-   * Items sharing a stock (e.g. Whole and Half Juicy Chicken both use Raw Chicken)
+   * Items sharing a stock (Half Juicy Chicken uses 0.5 of Whole Juicy Chicken)
    * count against the same stock. null = no portion set, so no limit.
    */
   const ordersLeft = (item: PosMenuItem, currentCart: CartItem[] = cart): number | null => {
@@ -154,10 +155,12 @@ export default function PosScreen() {
 
   const warnOutOfStock = (item: PosMenuItem) => {
     const stockNames = item.portions.map((p) => p.stockName).join(', ');
-    showAlert(
-      'Not Enough Stock',
-      `There isn't enough ${stockNames} left for another ${item.name}. Please restock first.`
-    );
+    // Stock named like the item (e.g. Liempo) -> "Liempo is out of stock."
+    const message =
+      stockNames === item.name
+        ? `${item.name} is out of stock. Please restock first.`
+        : `There isn't enough ${stockNames} left for another ${item.name}. Please restock first.`;
+    showAlert('Not Enough Stock', message);
   };
 
   const addToCart = (item: PosMenuItem) => {

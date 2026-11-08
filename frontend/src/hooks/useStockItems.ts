@@ -5,8 +5,7 @@
  * backend could not match to stock items).
  */
 import { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
-import { PROTECTED_ENDPOINTS } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { showAlert } from '@/utils/alert';
 
@@ -20,7 +19,7 @@ export function useStockItems() {
     setLoadingStocks(true);
     try {
       const token = await getToken();
-      const res = await axios.get(PROTECTED_ENDPOINTS.STOCKS, {
+      const res = await api.get(API_ROUTES.STOCKS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setStockItems(res.data?.stocks || []);

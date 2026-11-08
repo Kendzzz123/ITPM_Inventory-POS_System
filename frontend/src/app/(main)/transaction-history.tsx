@@ -26,9 +26,8 @@ import {
 import { File } from 'expo-file-system';
 import { saveExcelToDevice, shareFile } from '@/services/exportFile';
 import { buildTransactionsXlsxBase64 } from '@/services/exportSheet';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, getUserRole, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
@@ -73,6 +72,8 @@ export default function TransactionHistoryScreen() {
   const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
 
   const isCashierDark = role === 'cashier' && darkMode;
+  // Only managers can export. (The server also checks this on /transactions/export.)
+  const isManager = role === 'manager';
   const iconColor = isCashierDark ? COLORS.white : COLORS.nearBlack;
   const textColor = { color: iconColor };
 
@@ -115,12 +116,12 @@ export default function TransactionHistoryScreen() {
         return;
       }
       const [accRes, res] = await Promise.all([
-        axios
-          .get(`${API_URL}/protected/account`, {
+        api
+          .get(API_ROUTES.ACCOUNT, {
             headers: { Authorization: `Bearer ${token}` },
           })
           .catch(() => null),
-        axios.get(`${API_URL}/protected/transactions`, {
+        api.get(API_ROUTES.TRANSACTIONS, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -153,6 +154,11 @@ export default function TransactionHistoryScreen() {
 
   // Handle Export to Excel (.xlsx)
   const handleExport = async () => {
+    if (!isManager) {
+      setModalVisible(false);
+      showAlert('Not Allowed', 'Only managers can export transactions.');
+      return;
+    }
     setExporting(true);
     try {
       if (dateFilter === 'Custom' && (!startDate.trim() || !endDate.trim())) {
@@ -162,7 +168,7 @@ export default function TransactionHistoryScreen() {
 
       // The server applies the filters, so the file contains exactly what was selected.
       const token = await getToken();
-      const res = await axios.get(`${API_URL}/protected/transactions`, {
+      const res = await api.get(API_ROUTES.TRANSACTIONS_EXPORT, {
         headers: { Authorization: `Bearer ${token}` },
         params: {
           dateFilter: dateFilter || undefined,
@@ -444,19 +450,23 @@ export default function TransactionHistoryScreen() {
             </View>
           )}
 
-          {/* Export to Excel Outlined Trigger Button */}
-          <View style={styles.exportTriggerContainer}>
-            <TouchableOpacity
-              style={[
-                styles.exportOutlineBtn,
-                isCashierDark && { backgroundColor: COLORS.darkCard },
-              ]}
-              activeOpacity={0.8}
-              onPress={() => setModalVisible(true)}
-            >
-              <Text style={styles.exportOutlineBtnText}>Export to Excel</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Export to Excel Outlined Trigger Button (manager only) */}
+          {isManager ? (
+            <View style={styles.exportTriggerContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.exportOutlineBtn,
+                  isCashierDark && { backgroundColor: COLORS.darkCard },
+                ]}
+                activeOpacity={0.8}
+                onPress={() => setModalVisible(true)}
+              >
+                <Text style={styles.exportOutlineBtnText}>Export to Excel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ height: 24 }} />
+          )}
         </View>
       </ScrollView>
 
@@ -464,7 +474,7 @@ export default function TransactionHistoryScreen() {
       {/* EXPORT TO EXCEL BOTTOM SHEET MODAL                                       */}
       {/* ======================================================================== */}
       <Modal
-        visible={modalVisible}
+        visible={modalVisible && isManager}
         transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}

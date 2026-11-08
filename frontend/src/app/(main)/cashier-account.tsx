@@ -19,8 +19,7 @@ import {
   Poppins_500Medium,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { showAlert } from '@/utils/alert';
 import { getToken, clearToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, subscribeAppTheme } from '@/store/appState';
@@ -66,7 +65,7 @@ export default function CashierAccountScreen() {
   const loadProfile = useCallback(async () => {
     try {
       const token = await getToken();
-      const res = await axios.get(`${API_URL}/protected/account`, {
+      const res = await api.get(API_ROUTES.ACCOUNT, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.data?.account) {

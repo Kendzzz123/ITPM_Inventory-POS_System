@@ -23,9 +23,9 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { passwordError } from '@/utils/validation';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
@@ -77,8 +77,13 @@ export default function EditPasswordScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const handleOpenConfirmModal = () => {
-    if (!newPassword.trim() || newPassword.length < 6) {
-      showAlert('Invalid Password', 'New password must be at least 6 characters.');
+    if (!newPassword.trim()) {
+      showAlert('Invalid Password', 'Please enter a new password.');
+      return;
+    }
+    const passwordProblem = passwordError(newPassword);
+    if (passwordProblem) {
+      showAlert('Invalid Password', passwordProblem);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -92,8 +97,8 @@ export default function EditPasswordScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.put(
-        `${API_URL}/protected/change-password`,
+      await api.put(
+        API_ROUTES.CHANGE_PASSWORD,
         { newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );

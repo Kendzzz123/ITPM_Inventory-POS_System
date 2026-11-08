@@ -13,10 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
-import axios from 'axios';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { useStockItems } from '@/hooks/useStockItems';
 import { getToken } from '@/services/authService';
 
@@ -48,8 +47,8 @@ export default function RestockScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await axios.post(
-        `${API_URL}/protected/restock`,
+      await api.post(
+        API_ROUTES.RESTOCK,
         {
           stockId: stockIdFor(selectedItem),
           itemName: selectedItem,
@@ -205,7 +204,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 40,
@@ -215,6 +214,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   label: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 11,
     color: '#1f2937',
     marginBottom: 6,
@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   selectText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 13,
     color: '#111827',
   },
@@ -255,10 +256,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   dropdownOptionText: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 12.5,
     color: '#1f2937',
   },
   inputBox: {
+    fontFamily: 'Poppins_400Regular',
     height: 48,
     backgroundColor: '#ffffff',
     borderWidth: 1.5,
@@ -281,7 +284,7 @@ const styles = StyleSheet.create({
   submitBtnText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   modalBackdrop: {
     flex: 1,
@@ -316,7 +319,7 @@ const styles = StyleSheet.create({
     color: '#ef0000',
     textAlign: 'center',
     lineHeight: 23,
-    fontWeight: '400',
+    fontFamily: 'Poppins_400Regular',
     marginBottom: 26,
   },
   modalBtnRow: {
@@ -338,7 +341,7 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     color: '#ef0000',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   confirmBtn: {
     flex: 1,
@@ -351,6 +354,6 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
 });

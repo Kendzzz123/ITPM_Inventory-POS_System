@@ -9,7 +9,6 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
   StatusBar,
@@ -17,9 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import axios from 'axios';
 import { showAlert } from '@/utils/alert';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
@@ -33,7 +31,7 @@ export default function EmailVerificationScreen() {
   const [code, setCode] = useState<string[]>(new Array(CODE_LENGTH).fill(''));
   const [focusedIndex, setFocusedIndex] = useState<number | null>(0);
   const [timer, setTimer] = useState<number>(RESEND_COOLDOWN);
-  const [canResend, setCanResend] = useState<boolean>(false);
+  const canResend = timer <= 0; // derived, so it can't drift from the countdown
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isResending, setIsResending] = useState<boolean>(false);
 
@@ -42,14 +40,10 @@ export default function EmailVerificationScreen() {
 
   // Countdown timer for code resend
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-    } else {
-      setCanResend(true);
-    }
+    if (timer <= 0) return;
+    const interval = setInterval(() => {
+      setTimer((prev) => prev - 1);
+    }, 1000);
     return () => clearInterval(interval);
   }, [timer]);
 
@@ -112,7 +106,7 @@ export default function EmailVerificationScreen() {
     setIsVerifying(true);
 
     try {
-      await axios.post(`${API_URL}/auth/verify-otp`, {
+      await api.post(API_ROUTES.VERIFY_OTP, {
         email: emailDisplay,
         otp: fullCode,
       });
@@ -136,13 +130,12 @@ export default function EmailVerificationScreen() {
 
     setIsResending(true);
     try {
-      await axios.post(`${API_URL}/auth/forgot-password`, {
+      await api.post(API_ROUTES.FORGOT_PASSWORD, {
         email: emailDisplay,
       });
 
       showAlert('Sent', 'A new 6-digit code has been sent to your email.');
       setTimer(RESEND_COOLDOWN);
-      setCanResend(false);
       setCode(new Array(CODE_LENGTH).fill(''));
       inputsRef.current[0]?.focus();
     } catch (error: any) {
@@ -162,95 +155,93 @@ export default function EmailVerificationScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" />
 
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardContainer}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-        >
-          <View style={styles.card}>
-            {/* Header Back Button */}
-            <MaterialIcons
-              style={styles.usogkaonti}
-              name="chevron-left"
-              size={50}
-              color="#111827"
-              onPress={() => router.replace('/forgot-password')}
-            />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardContainer}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        <View style={styles.card}>
+          {/* Header Back Button */}
+          <MaterialIcons
+            style={styles.usogkaonti}
+            name="chevron-left"
+            size={50}
+            color="#111827"
+            onPress={() => router.replace('/forgot-password')}
+          />
 
-            <View style={styles.screenContent}>
-              <View style={styles.topSection}>
-                <View style={styles.iconCircle}>
-                  <MaterialIcons name="mail" size={32} color="#EA0000" />
-                </View>
+          <View style={styles.screenContent}>
+            <View style={styles.topSection}>
+              <View style={styles.iconCircle}>
+                <MaterialIcons name="mail" size={32} color="#EA0000" />
+              </View>
 
-                <Text style={styles.title}>Check your email</Text>
-                <Text style={styles.subtitle}>
-                  We sent a 6-digit confirmation code to
-                  <Text style={styles.emailText}> {emailDisplay || 'your email'}</Text>
-                </Text>
+              <Text style={styles.title}>Check your email</Text>
+              <Text style={styles.subtitle}>
+                We sent a 6-digit confirmation code to
+                <Text style={styles.emailText}> {emailDisplay || 'your email'}</Text>
+              </Text>
 
-                {/* OTP Cells */}
-                <View style={styles.codeRow}>
-                  {code.map((digit, index) => {
-                    const isCurrent = focusedIndex === index;
-                    return (
-                      <TextInput
-                        key={index}
-                        ref={(ref) => {
-                          inputsRef.current[index] = ref;
-                        }}
-                        value={digit}
-                        onChangeText={(val) => handleChangeText(val, index)}
-                        onKeyPress={(e) => handleKeyPress(e, index)}
-                        onFocus={() => setFocusedIndex(index)}
-                        onBlur={() => setFocusedIndex(null)}
-                        keyboardType="number-pad"
-                        textContentType="oneTimeCode"
-                        autoComplete="one-time-code"
-                        maxLength={1}
-                        selectTextOnFocus
-                        caretHidden
-                        editable={!isVerifying}
-                        style={[
-                          styles.codeInput,
-                          isCurrent && styles.codeInputFocused,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
+              {/* OTP Cells */}
+              <View style={styles.codeRow}>
+                {code.map((digit, index) => {
+                  const isCurrent = focusedIndex === index;
+                  return (
+                    <TextInput
+                      key={index}
+                      ref={(ref) => {
+                        inputsRef.current[index] = ref;
+                      }}
+                      value={digit}
+                      onChangeText={(val) => handleChangeText(val, index)}
+                      onKeyPress={(e) => handleKeyPress(e, index)}
+                      onFocus={() => setFocusedIndex(index)}
+                      onBlur={() => setFocusedIndex(null)}
+                      keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      autoComplete="one-time-code"
+                      maxLength={1}
+                      selectTextOnFocus
+                      caretHidden
+                      editable={!isVerifying}
+                      style={[
+                        styles.codeInput,
+                        isCurrent && styles.codeInputFocused,
+                      ]}
+                    />
+                  );
+                })}
+              </View>
 
-                {/* Resend Cooldown */}
-                <View style={styles.resendContainer}>
-                  <Text style={styles.resendPrompt}>Didn't receive the code? </Text>
-                  <Pressable onPress={handleResend} disabled={!canResend || isResending}>
-                    <Text style={[styles.resendText, !canResend && styles.resendTextDisabled]}>
-                      {canResend ? 'Resend' : `Resend in ${timer}s`}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Verify Button */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.SendCodeButton,
-                    pressed && styles.SendCodeButtonPressed,
-                  ]}
-                  onPress={() => verifyCode()}
-                  disabled={isVerifying}
-                >
-                  {isVerifying ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <Text style={styles.SendCode}>Verify code</Text>
-                  )}
+              {/* Resend Cooldown */}
+              <View style={styles.resendContainer}>
+                <Text style={styles.resendPrompt}>Didn&apos;t receive the code? </Text>
+                <Pressable onPress={handleResend} disabled={!canResend || isResending}>
+                  <Text style={[styles.resendText, !canResend && styles.resendTextDisabled]}>
+                    {canResend ? 'Resend' : `Resend in ${timer}s`}
+                  </Text>
                 </Pressable>
               </View>
+
+              {/* Verify Button */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.SendCodeButton,
+                  pressed && styles.SendCodeButtonPressed,
+                ]}
+                onPress={() => verifyCode()}
+                disabled={isVerifying}
+              >
+                {isVerifying ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.SendCode}>Verify code</Text>
+                )}
+              </Pressable>
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -310,7 +301,7 @@ const styles = StyleSheet.create({
   },
   emailText: {
     color: '#111827',
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
   },
   codeRow: {
     flexDirection: 'row',
@@ -329,7 +320,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     textAlign: 'center',
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
   codeInputFocused: {
@@ -361,16 +352,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   resendPrompt: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 13,
     color: '#6B7280',
   },
   resendText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
     color: '#EA0000',
   },
   resendTextDisabled: {
     color: '#9CA3AF',
-    fontWeight: '500',
+    fontFamily: 'Poppins_500Medium',
   },
 });

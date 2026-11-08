@@ -4,6 +4,7 @@
  *   GET /protected/dashboard-report
  *   GET /protected/sales-report?period=Daily|Weekly|Monthly|Yearly
  *   GET /protected/transactions?dateFilter=&paymentMethod=&startDate=&endDate=
+ *   GET /protected/transactions/export?(same filters)   (manager only — Export to Excel)
  */
 
 'use strict';
@@ -37,7 +38,7 @@ async function topSellers(period, limit = 4) {
        JOIN Orders o     ON od.Order_ID = o.Order_ID
       WHERE ${PERIOD_FILTERS[period]}
       GROUP BY m.Item_ID, m.Item_Name
-      ORDER BY value DESC
+      ORDER BY value DESC, m.Item_ID
       LIMIT ?`,
     [limit]
   );
@@ -69,7 +70,7 @@ router.get('/dashboard-report', authorizeRoles('manager'), async (req, res) => {
   );
 
   const [transactions] = await pool.query(
-    `${TRANSACTION_SELECT} ORDER BY o.Order_Date_Time DESC LIMIT 3`
+    `${TRANSACTION_SELECT} ORDER BY o.Order_Date_Time DESC, o.Order_ID DESC LIMIT 3`
   );
 
   return res.json({
@@ -88,9 +89,13 @@ router.get('/sales-report', authorizeRoles('manager'), async (req, res) => {
   return res.json({ salesData: await topSellers(period) });
 });
 
-// GET /protected/transactions — full history with optional filters
-router.get('/transactions', async (req, res) => {
-  const { dateFilter, paymentMethod, startDate, endDate } = req.query;
+/**
+ * Transaction rows matching the optional filters in the query string.
+ * Shared by the on-screen history and the manager-only Excel export.
+ * @param {Record<string, unknown>} query req.query
+ */
+async function findTransactions(query) {
+  const { dateFilter, paymentMethod, startDate, endDate } = query;
   const conditions = [];
   const params = [];
 
@@ -107,18 +112,29 @@ router.get('/transactions', async (req, res) => {
 
   // Only cash payments are recorded today, so an E-wallet filter returns nothing.
   if (paymentMethod && paymentMethod !== 'All' && String(paymentMethod).toLowerCase() !== 'cash') {
-    return res.json({ transactions: [] });
+    return [];
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `${TRANSACTION_SELECT} ${where} ORDER BY o.Order_Date_Time DESC LIMIT 500`,
+    `${TRANSACTION_SELECT} ${where} ORDER BY o.Order_Date_Time DESC, o.Order_ID DESC LIMIT 500`,
     params
   );
-  return res.json({ transactions: rows });
+  return rows;
+}
+
+// GET /protected/transactions — full history with optional filters (manager + cashier)
+router.get('/transactions', async (req, res) => {
+  return res.json({ transactions: await findTransactions(req.query) });
+});
+
+// GET /protected/transactions/export — same filters, for Export to Excel (manager only)
+router.get('/transactions/export', authorizeRoles('manager'), async (req, res) => {
+  return res.json({ transactions: await findTransactions(req.query) });
 });
 
 module.exports = router;
 
 // TEST: sales-report rejects unknown period with 400
 // TEST: transactions Custom filter converts MM/DD/YYYY and filters inclusively
+// TEST: transactions/export -> 403 for a cashier token, 200 with rows for a manager token

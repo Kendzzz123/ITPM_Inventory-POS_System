@@ -9,8 +9,9 @@ export const DEFAULT_STAFF_PASSWORD = 'Mr.liempo123';
 /** Passwords the app treats as "default" — users must change them on first login. */
 export const DEFAULT_PASSWORDS = ['Mr.liempo123', 'Mr-liempo123', 'password123'];
 
-/** Minimum password length (matches the backend). */
+/** Password length limits (match the backend: 6 to 72 characters). */
 export const MIN_PASSWORD_LENGTH = 6;
+export const MAX_PASSWORD_LENGTH = 72;
 
 /** Today's date as MM/DD/YYYY (the format the backend expects). */
 export const todaySlashDate = (): string => {

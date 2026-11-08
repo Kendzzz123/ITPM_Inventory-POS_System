@@ -3,6 +3,7 @@
  * @description Automatic database upgrades, run when the server starts.
  * Each step runs only once (recorded in the Schema_Migrations table), so it is
  * safe for both new databases and ones created from an older pos_schema.sql.
+ * After the steps, syncCatalog() adds any new items from catalog.js (every start).
  */
 
 'use strict';
@@ -97,7 +98,89 @@ const MIGRATIONS = [
       await makeUserFkSetNull('Waste_Log');
     },
   },
+  {
+    id: '004_stock_items_match_menu',
+    description: 'Stock items = POS menu items (hides Raw Chicken, Raw Pork and other non-menu stock)',
+    run: async () => {
+      // Hide instead of delete: restock / sale / waste history still points at the
+      // old rows, and that history is append-only (it can never be deleted).
+      await addColumnIfMissing('Stock_Items', 'Is_Active', 'BOOLEAN NOT NULL DEFAULT TRUE');
+
+      // Stock for menu items that used to draw from raw stock (starts at 0 — use Restock).
+      await pool.query(
+        'INSERT IGNORE INTO Stock_Items (Stock_Name, Unit, Current_Quantity, Minimum_Level) VALUES ?',
+        [STOCK_ITEMS.map((s) => [s.name, s.unit, 0, s.minLevel])]
+      );
+
+      // Only stock named exactly like an active menu item stays visible.
+      await pool.query(
+        `UPDATE Stock_Items s
+            SET s.Is_Active = EXISTS (
+                  SELECT 1 FROM Menu_Items m WHERE m.Item_Name = s.Stock_Name AND m.Is_Active = 1)`
+      );
+
+      // Portions that used hidden stock (e.g. Whole Juicy Chicken -> Raw Chicken) are
+      // replaced with the defaults (Whole -> Whole Juicy Chicken, Half -> 0.5 of it, ...).
+      // Portions that already use a visible stock are left as you set them.
+      await pool.query(
+        `DELETE r FROM Recipe_Portions r
+           JOIN Stock_Items s ON s.Stock_ID = r.Stock_ID
+          WHERE s.Is_Active = 0`
+      );
+      for (const p of DEFAULT_PORTIONS) {
+        await pool.query(
+          `INSERT INTO Recipe_Portions (Item_ID, Stock_ID, Quantity_Used)
+           SELECT m.Item_ID, s.Stock_ID, ?
+             FROM Menu_Items m JOIN Stock_Items s ON s.Stock_Name = ? AND s.Is_Active = 1
+            WHERE m.Item_Name = ?
+              AND NOT EXISTS (SELECT 1 FROM Recipe_Portions r WHERE r.Item_ID = m.Item_ID)`,
+          [p.quantityUsed, p.stock, p.item]
+        );
+      }
+    },
+  },
 ];
+
+/**
+ * Adds items that are new in catalog.js. Runs on every start, so adding an item
+ * to the catalog and restarting the backend is enough. Safe to repeat:
+ * - menu and stock rows are only inserted if missing (prices you changed stay);
+ * - a stock item is visible only while an active menu item has the same name;
+ * - a default portion is added only to a menu item that has none yet.
+ */
+async function syncCatalog() {
+  const [menuResult] = await pool.query(
+    'INSERT IGNORE INTO Menu_Items (Item_Name, Price, Category) VALUES ?',
+    [MENU_ITEMS.map((m) => [m.name, m.price, m.category])]
+  );
+  const [stockResult] = await pool.query(
+    'INSERT IGNORE INTO Stock_Items (Stock_Name, Unit, Current_Quantity, Minimum_Level) VALUES ?',
+    [STOCK_ITEMS.map((s) => [s.name, s.unit, 0, s.minLevel])]
+  );
+  await pool.query(
+    `UPDATE Stock_Items s
+        SET s.Is_Active = EXISTS (
+              SELECT 1 FROM Menu_Items m WHERE m.Item_Name = s.Stock_Name AND m.Is_Active = 1)`
+  );
+  let portionsAdded = 0;
+  for (const p of DEFAULT_PORTIONS) {
+    const [r] = await pool.query(
+      `INSERT INTO Recipe_Portions (Item_ID, Stock_ID, Quantity_Used)
+       SELECT m.Item_ID, s.Stock_ID, ?
+         FROM Menu_Items m JOIN Stock_Items s ON s.Stock_Name = ? AND s.Is_Active = 1
+        WHERE m.Item_Name = ?
+          AND NOT EXISTS (SELECT 1 FROM Recipe_Portions r WHERE r.Item_ID = m.Item_ID)`,
+      [p.quantityUsed, p.stock, p.item]
+    );
+    portionsAdded += r.affectedRows;
+  }
+  if (menuResult.affectedRows || stockResult.affectedRows || portionsAdded) {
+    console.log(
+      `Catalog synced: ${menuResult.affectedRows} new menu item(s), ` +
+        `${stockResult.affectedRows} new stock item(s), ${portionsAdded} new portion(s).`
+    );
+  }
+}
 
 async function ensureSchema() {
   await pool.query(
@@ -115,6 +198,8 @@ async function ensureSchema() {
     await pool.query('INSERT INTO Schema_Migrations (Migration_ID) VALUES (?)', [m.id]);
     console.log(`Database updated: ${m.description}`);
   }
+
+  await syncCatalog();
 }
 
 module.exports = ensureSchema;

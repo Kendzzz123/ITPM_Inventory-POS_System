@@ -21,10 +21,10 @@ import {
   Poppins_500Medium,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import axios from 'axios';
-import { API_URL } from '@/config/apiConfig';
+import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
-import { DEFAULT_PASSWORDS, MIN_PASSWORD_LENGTH } from '@/constants/app';
+import { DEFAULT_PASSWORDS } from '@/constants/app';
+import { passwordError } from '@/utils/validation';
 import { ROUTES, homeRouteFor } from '@/constants/routes';
 
 
@@ -64,8 +64,9 @@ export default function ChangePasswordScreen() {
       return;
     }
 
-    if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      setErrorMsg(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    const passwordProblem = passwordError(newPassword);
+    if (passwordProblem) {
+      setErrorMsg(passwordProblem);
       return;
     }
 
@@ -90,8 +91,8 @@ export default function ChangePasswordScreen() {
         router.replace(ROUTES.LOGIN);
         return;
       }
-      await axios.put(
-        `${API_URL}/protected/change-password`,
+      await api.put(
+        API_ROUTES.CHANGE_PASSWORD,
         { newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -153,7 +154,7 @@ export default function ChangePasswordScreen() {
             {/* Title & Security Subtitle */}
             <Text style={styles.pageTitle}>Change Password</Text>
             <Text style={styles.subtitle}>
-              Kindly enter your new password to ensure account's security.
+              Kindly enter your new password to ensure account&apos;s security.
             </Text>
 
             {/* Input Fields with Eye Icons */}
