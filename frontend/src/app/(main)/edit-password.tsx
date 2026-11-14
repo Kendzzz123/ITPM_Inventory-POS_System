@@ -27,7 +27,7 @@ import { showAlert } from '@/utils/alert';
 import { passwordError } from '@/utils/validation';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
+import { getUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 
 
@@ -39,8 +39,6 @@ const COLORS = {
   modalCream: '#FDFBF0', // Confirmation dialog background
   white: '#FFFFFF',      // Input fields, cards, text on red buttons
   nearBlack: '#0F1015',  // Titles, labels, and body text
-  darkBg: '#181920',
-  darkCard: '#22242E',
 };
 
 export default function EditPasswordScreen() {
@@ -53,18 +51,15 @@ export default function EditPasswordScreen() {
     Poppins_700Bold,
   });
 
-  // Role, Dark Mode & Side Drawer State
+  // Role & Side Drawer State
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
-  const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
 
-  const isCashierDark = role === 'cashier' && darkMode;
-  const iconColor = isCashierDark ? COLORS.white : COLORS.nearBlack;
+  const iconColor = COLORS.nearBlack;
   const textColor = { color: iconColor };
 
   useEffect(() => {
     return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
       setRole(getUserRole());
     });
   }, []);
@@ -116,7 +111,7 @@ export default function EditPasswordScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={[styles.center, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
@@ -124,10 +119,10 @@ export default function EditPasswordScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -157,13 +152,7 @@ export default function EditPasswordScreen() {
 
             {/* Top Circular Open-Padlock Icon */}
             <View
-              style={[
-                styles.lockCircle,
-                isCashierDark && {
-                  backgroundColor: COLORS.darkCard,
-                  borderColor: COLORS.white,
-                },
-              ]}
+              style={styles.lockCircle}
             >
               <MaterialCommunityIcons name="lock-open" size={64} color={COLORS.red} />
             </View>
@@ -180,10 +169,6 @@ export default function EditPasswordScreen() {
                     style={[
                       styles.inputBox,
                       styles.inputWithIcon,
-                      isCashierDark && {
-                        backgroundColor: COLORS.darkCard,
-                        color: COLORS.white,
-                      },
                     ]}
                     value={newPassword}
                     onChangeText={setNewPassword}
@@ -203,7 +188,7 @@ export default function EditPasswordScreen() {
                     <Ionicons
                       name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
                       size={22}
-                      color={isCashierDark ? '#D1D5DB' : '#6B7280'}
+                      color={'#6B7280'}
                     />
                   </Pressable>
                 </View>
@@ -216,10 +201,6 @@ export default function EditPasswordScreen() {
                     style={[
                       styles.inputBox,
                       styles.inputWithIcon,
-                      isCashierDark && {
-                        backgroundColor: COLORS.darkCard,
-                        color: COLORS.white,
-                      },
                     ]}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
@@ -239,7 +220,7 @@ export default function EditPasswordScreen() {
                     <Ionicons
                       name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                       size={22}
-                      color={isCashierDark ? '#D1D5DB' : '#6B7280'}
+                      color={'#6B7280'}
                     />
                   </Pressable>
                 </View>
@@ -267,10 +248,7 @@ export default function EditPasswordScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View
-            style={[
-              styles.modalCard,
-              isCashierDark && { backgroundColor: COLORS.darkCard },
-            ]}
+            style={styles.modalCard}
           >
             {/* Closed Padlock Icon in Circle */}
             <View style={styles.modalIconCircle}>
@@ -311,8 +289,6 @@ export default function EditPasswordScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );

@@ -1,4 +1,9 @@
-// stocks.tsx
+/**
+ * @file stocks.tsx
+ * @description Inventory: one card per menu item with how many are left
+ * (red when low). Tap a card to open it (stock-item.tsx), where the manager
+ * can restock it.
+ */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
@@ -13,36 +18,30 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
-import { imageFor } from '@/constants/images';
+import { fetchInventory, type InventoryCard } from '@/services/inventory';
 import { showAlert } from '@/utils/alert';
-import { toStockLevel, formatNumber, joinNames, type StockLevel } from '@/utils/stock';
-import { getDarkMode, setGlobalDarkMode, getUserRole, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
+import { formatNumber } from '@/utils/stock';
+import { getUserRole, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
-
-
-type StockCardItem = StockLevel & { image: string };
 
 export default function StocksScreen() {
   const router = useRouter();
 
-  const [stocks, setStocks] = useState<StockCardItem[]>([]);
+  const [cards, setCards] = useState<InventoryCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
 
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
-  const [darkMode, setDarkMode] = useState(getDarkMode());
 
-  const isCashierDark = role === 'cashier' && darkMode;
-  const iconColor = isCashierDark ? '#FFFFFF' : '#111827';
+  const iconColor = '#111827';
 
   useEffect(() => {
     return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
       setRole(getUserRole());
     });
   }, []);
@@ -55,15 +54,13 @@ export default function StocksScreen() {
         return;
       }
 
-      const [accRes, res] = await Promise.all([
+      const [accRes, inventory] = await Promise.all([
         api
           .get(API_ROUTES.ACCOUNT, {
             headers: { Authorization: `Bearer ${token}` },
           })
           .catch(() => null),
-        api.get(API_ROUTES.STOCKS, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        fetchInventory(token),
       ]);
 
       if (accRes?.data?.account?.role) {
@@ -73,13 +70,7 @@ export default function StocksScreen() {
         setGlobalUserRole(fetchedRole);
       }
 
-      const dbStocks: unknown[] = res.data?.stocks || [];
-      setStocks(
-        dbStocks.map((row) => {
-          const s = toStockLevel(row);
-          return { ...s, image: imageFor(s.name) };
-        })
-      );
+      setCards(inventory);
     } catch (err: any) {
       const status = err.response?.status;
       if (status === 401 || status === 403) {
@@ -87,7 +78,7 @@ export default function StocksScreen() {
         router.replace('/');
         return;
       }
-      showAlert('Error', err.response?.data?.message || 'Could not load stocks. Pull down to retry.');
+      showAlert('Error', err.response?.data?.message || 'Could not load the inventory. Pull down to retry.');
     } finally {
       setLoading(false);
     }
@@ -106,15 +97,15 @@ export default function StocksScreen() {
     setRefreshing(false);
   }, [loadStocks]);
 
-  const lowItems = stocks.filter((s) => s.isLow);
-  const isManager = role === 'manager';
+  const openCard = (card: InventoryCard) =>
+    router.push(`/stock-item?name=${encodeURIComponent(card.name)}` as Href);
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, isCashierDark && { backgroundColor: '#181920' }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -139,73 +130,35 @@ export default function StocksScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.pageTitle, { color: iconColor }]}>Stocks</Text>
+          <Text style={[styles.pageTitle, { color: iconColor }]}>Inventory</Text>
 
           {loading ? (
             <ActivityIndicator size="large" color="#e60000" style={{ marginTop: 40 }} />
           ) : (
-            <>
-              {lowItems.length > 0 && (
+            <View style={styles.grid}>
+              {cards.map((item) => (
                 <TouchableOpacity
-                  style={[styles.lowBanner, isCashierDark && styles.lowBannerDark]}
-                  onPress={() => router.push((isManager ? '/restock' : '/stock-alert') as Href)}
+                  key={item.name}
+                  style={styles.stockCard}
                   activeOpacity={0.8}
+                  onPress={() => openCard(item)}
                   accessibilityRole="button"
+                  accessibilityLabel={`${item.name}: ${formatNumber(item.quantity)} left${item.isLow ? ', low stock' : ''}`}
                 >
-                  <Feather name="alert-triangle" size={20} color="#ef0000" />
-                  <Text style={[styles.lowBannerText, isCashierDark && { color: '#FECACA' }]}>
-                    {lowItems.length === 1 ? '1 item is' : `${lowItems.length} items are`} low:{' '}
-                    {joinNames(lowItems.map((s) => s.name))}.{' '}
-                    <Text style={styles.lowBannerLink}>{isManager ? 'Restock' : 'See Stock Alert'}</Text>
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              <View style={styles.grid}>
-                {stocks.map((item) => (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.stockCard,
-                      isCashierDark && { backgroundColor: '#22242E' },
-                      item.isLow && styles.stockCardLow,
-                    ]}
-                    accessibilityLabel={`${item.name}: ${formatNumber(item.quantity)} ${item.unit}${
-                      item.isLow ? `, low stock (minimum ${formatNumber(item.minLevel)})` : ''
-                    }`}
-                  >
-                    <View
-                      style={[
-                        styles.imageWrapper,
-                        isCashierDark && { backgroundColor: '#22242E' },
-                      ]}
-                    >
-                      <Image
-                        source={{ uri: item.image }}
-                        style={styles.stockImage}
-                        resizeMode="contain"
-                      />
-                      {item.isLow && (
-                        <View style={styles.lowBadge}>
-                          <Text style={styles.lowBadgeText}>LOW</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={[styles.cardFooter, item.isLow && styles.cardFooterLow]}>
-                      <Text
-                        style={[styles.stockName, item.isLow && styles.textOnRed]}
-                        numberOfLines={1}
-                      >
-                        {item.name}
-                      </Text>
-                      <Text style={[styles.stockQty, item.isLow && styles.textOnRed]}>
-                        {formatNumber(item.quantity)}
-                      </Text>
-                    </View>
+                  <View style={styles.imageWrapper}>
+                    <Image source={{ uri: item.image }} style={styles.stockImage} resizeMode="contain" />
                   </View>
-                ))}
-              </View>
-            </>
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.stockName} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    <Text style={[styles.stockQty, item.isLow && styles.stockQtyLow]}>
+                      {formatNumber(item.quantity)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -214,8 +167,6 @@ export default function StocksScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );
@@ -253,69 +204,17 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'center', // an odd last card sits in the middle
     rowGap: 16,
   },
   stockCard: {
     width: '47.5%',
+    marginHorizontal: '1.25%',
     backgroundColor: '#fffdf8',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#fcd34d',
     overflow: 'hidden',
-  },
-  stockCardLow: {
-    borderWidth: 2,
-    borderColor: '#ef0000',
-  },
-  lowBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#ef0000',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  lowBadgeText: {
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 10,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  cardFooterLow: {
-    backgroundColor: '#ef0000',
-  },
-  textOnRed: {
-    color: '#FFFFFF',
-  },
-  lowBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 18,
-  },
-  lowBannerDark: {
-    backgroundColor: '#3A1F22',
-    borderColor: '#7F1D1D',
-  },
-  lowBannerText: {
-    flex: 1,
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#991B1B',
-  },
-  lowBannerLink: {
-    fontFamily: 'Poppins_600SemiBold',
-    color: '#ef0000',
-    textDecorationLine: 'underline',
   },
   imageWrapper: {
     height: 115,
@@ -330,6 +229,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   cardFooter: {
+    minHeight: 54, // same height for one- and two-line names, so cards line up
     backgroundColor: '#ffd428',
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -349,4 +249,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_700Bold',
     color: '#111827',
   },
+  stockQtyLow: {
+    color: '#EC0000',
+  },
 });
+
+// TEST: low items show a red number; tapping a card opens /stock-item?name=<item>

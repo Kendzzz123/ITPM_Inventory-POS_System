@@ -13,18 +13,17 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import {
   useFonts,
   Poppins_400Regular,
   Poppins_500Medium,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
-import { showAlert } from '@/utils/alert';
 import { api, API_ROUTES } from '@/config/apiConfig';
-import { saveToken, clearToken } from '@/services/authService';
-import { setCurrentUser, setGlobalUserRole } from '@/store/appState';
+import { saveToken } from '@/services/authService';
+import { setGlobalUserRole } from '@/store/appState';
 import { DEFAULT_PASSWORDS } from '@/constants/app';
 import { ROUTES, homeRouteFor } from '@/constants/routes';
 
@@ -50,33 +49,21 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // One red line above the Log in button (design), e.g. "Invalid Password".
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  // Which input the error belongs to, so it can be outlined and the message shown under it.
-  const [errorField, setErrorField] = useState<'email' | 'password' | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /** Shows an error under one field (or under the form when field is null). */
-  const showError = (message: string, field: 'email' | 'password' | null, title = 'Login Failed') => {
-    setErrorMsg(message);
-    setErrorField(field);
-    if (Platform.OS !== 'web') {
-      showAlert(title, message);
-    }
-  };
-
-  const clearError = () => {
-    setErrorMsg(null);
-    setErrorField(null);
-  };
+  const showError = (message: string) => setErrorMsg(message);
+  const clearError = () => setErrorMsg(null);
 
   const handleLogin = async () => {
     clearError();
     if (!email.trim()) {
-      showError('Please enter your email.', 'email', 'Error');
+      showError('Please enter your email.');
       return;
     }
     if (!password) {
-      showError('Please enter your password.', 'password', 'Error');
+      showError('Please enter your password.');
       return;
     }
 
@@ -91,8 +78,6 @@ setLoading(true);
 
       const userRole = response.data?.user?.role?.toLowerCase() || '';
       setGlobalUserRole(userRole === 'manager' ? 'manager' : 'cashier');
-      // Load this user's saved dark-mode setting before opening their home screen.
-      await setCurrentUser(response.data?.user?.id);
 
       const isDefaultPassword =
         response.data?.mustChangePassword === true || DEFAULT_PASSWORDS.includes(password);
@@ -109,11 +94,13 @@ setLoading(true);
       // Otherwise land on Home Page based on role
       router.replace(homeRouteFor(userRole));
     } catch (error: any) {
-      const message =
-        error.response?.data?.message || error.message || 'Failed to connect to server';
       // The server says which field is wrong: 'email' (no such account) or 'password'.
+      // Those two use the design's wording; anything else (suspended account,
+      // too many attempts, server offline) shows the server's own message.
       const field = error.response?.data?.field;
-      showError(message, field === 'email' || field === 'password' ? field : null);
+      if (field === 'email') showError('Invalid Email Address');
+      else if (field === 'password') showError('Invalid Password');
+      else showError(error.response?.data?.message || error.message || 'Failed to connect to server');
     } finally {
       setLoading(false);
     }
@@ -159,10 +146,10 @@ setLoading(true);
               <Text style={styles.subtitle}>Please log in your account.</Text>
 
               {/* Email Field */}
-              <View style={styles.inputGroup}>
+              <View style={[styles.inputGroup, styles.emailGroup]}>
                 <Text style={styles.label}>Email</Text>
                 <TextInput
-                  style={[styles.input, errorField === 'email' && styles.inputError]}
+                  style={styles.input}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   value={email}
@@ -171,20 +158,16 @@ setLoading(true);
                     clearError();
                   }}
                 />
-                {errorField === 'email' && !!errorMsg && (
-                  <Text style={styles.fieldErrorText}>{errorMsg}</Text>
-                )}
               </View>
 
               {/* Password Field with Eye Icon */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Password</Text>
-                <View
-                  style={[styles.passwordContainer, errorField === 'password' && styles.inputError]}
-                >
+                <View style={styles.passwordContainer}>
                   <TextInput
                     style={styles.passwordInput}
                     secureTextEntry={!showPassword}
+                    autoCapitalize="none"
                     value={password}
                     onChangeText={(val) => {
                       setPassword(val);
@@ -195,17 +178,16 @@ setLoading(true);
                     onPress={() => setShowPassword((prev) => !prev)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     style={styles.eyeIconBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                   >
                     <Ionicons
                       name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={22}
+                      size={20}
                       color="#6B7280"
                     />
                   </Pressable>
                 </View>
-                {errorField === 'password' && !!errorMsg && (
-                  <Text style={styles.fieldErrorText}>{errorMsg}</Text>
-                )}
               </View>
 
               {/* Forgot Password Link */}
@@ -216,8 +198,14 @@ setLoading(true);
                 <Text style={styles.forgotText}>Forgot Password</Text>
               </Pressable>
 
-              {/* Errors not tied to one field (suspended account, server offline, ...) */}
-              {!!errorMsg && !errorField && <Text style={styles.errorText}>{errorMsg}</Text>}
+              {/* Login error, between Forgot Password and Log in (design) */}
+              <View style={styles.errorSlot}>
+                {!!errorMsg && (
+                  <Text style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                    {errorMsg}
+                  </Text>
+                )}
+              </View>
 
               {/* Primary Red Log In Button */}
               <Pressable
@@ -265,61 +253,65 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.cream,
   },
+  // Sizes follow the 360 x 800 design frame.
   banner: {
     backgroundColor: COLORS.yellow,
     paddingTop: Platform.OS === 'ios' ? 60 : 75,
-    paddingBottom: 46,
-    paddingHorizontal: 24,
+    paddingBottom: 64,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    borderBottomLeftRadius: 36,
-    borderBottomRightRadius: 36,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
   },
   logo: {
-    width: 250,
-    height: 115,
-    marginBottom: 6,
+    width: 343,
+    maxWidth: '100%',
+    height: 140,
   },
   bannerSubtitle: {
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'Poppins_400Regular',
     fontSize: 13,
     color: COLORS.nearBlack,
-    marginTop: 4,
+    marginTop: 15,
   },
   formContainer: {
-    paddingHorizontal: 34,
-    paddingTop: 28,
+    paddingHorizontal: 25,
+    paddingTop: 32,
     paddingBottom: 40,
   },
   title: {
     paddingTop: 16,
     fontFamily: 'Poppins_700Bold',
-    fontSize: 26,
+    fontSize: 27.5,
     textAlign: 'center',
     color: COLORS.nearBlack,
   },
   subtitle: {
     fontFamily: 'Poppins_400Regular',
-    fontSize: 13.5,
+    fontSize: 14,
     textAlign: 'center',
     color: COLORS.nearBlack,
-    marginTop: 4,
-    marginBottom: 26,
+    marginTop: 0,
+    marginBottom: 20,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 0,
+  },
+  emailGroup: {
+    marginBottom: 27,
   },
   label: {
     fontFamily: 'Poppins_400Regular',
-    fontSize: 12.5,
+    fontSize: 12,
     color: COLORS.nearBlack,
-    marginBottom: 6,
-    marginLeft: 2,
+    marginBottom: 4,
+    marginLeft: 3,
   },
   input: {
-    height: 48,
+    height: 47,
     backgroundColor: COLORS.white,
-    borderWidth: 1.8,
+    borderWidth: 1.5,
     borderColor: COLORS.yellow,
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -327,10 +319,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.nearBlack,
   },
+  // Same box as the Email input, with room for the eye button on the right.
   passwordContainer: {
-    height: 48,
+    height: 47,
     backgroundColor: COLORS.white,
-    borderWidth: 1.8,
+    borderWidth: 1.5,
     borderColor: COLORS.yellow,
     borderRadius: 12,
     paddingLeft: 14,
@@ -340,6 +333,7 @@ const styles = StyleSheet.create({
   },
   passwordInput: {
     flex: 1,
+    minWidth: 0, // lets the input shrink so the eye stays inside the box on web
     height: '100%',
     fontFamily: 'Poppins_400Regular',
     fontSize: 14,
@@ -352,7 +346,8 @@ const styles = StyleSheet.create({
   },
   forgotContainer: {
     alignSelf: 'flex-end',
-    marginTop: 2,
+    marginTop: 16,
+    marginRight: 7,
     marginBottom: 24,
   },
   forgotText: {
@@ -361,29 +356,24 @@ const styles = StyleSheet.create({
     color: COLORS.red,
     textDecorationLine: 'underline',
   },
-  inputError: {
-    borderColor: COLORS.red,
-  },
-  fieldErrorText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11.5,
-    color: COLORS.red,
-    marginTop: 4,
-    marginLeft: 2,
+  // Always takes the same space, so the button doesn't jump when a message shows.
+  errorSlot: {
+    minHeight: 18,
+    marginBottom: 17,
+    justifyContent: 'center',
   },
   errorText: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 12,
     color: COLORS.red,
     textAlign: 'center',
-    marginBottom: 14,
   },
   loginButton: {
     alignSelf: 'center',
-    width: 220,
-    height: 48,
+    width: 188,
+    height: 38,
     backgroundColor: COLORS.red,
-    borderRadius: 14,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
@@ -394,6 +384,10 @@ const styles = StyleSheet.create({
   loginButtonText: {
     fontFamily: 'Poppins_700Bold',
     color: COLORS.white,
-    fontSize: 16,
+    fontSize: 18,
   },
 });
+
+// TEST: unknown email -> "Invalid Email Address" above Log in; wrong password -> "Invalid Password"; no red outline
+// TEST: eye button shows/hides the password
+// TEST: suspended account / too many attempts -> the server's message in the same spot; typing clears it

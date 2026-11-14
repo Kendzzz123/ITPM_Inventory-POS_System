@@ -1,43 +1,57 @@
+/**
+ * @file restock.tsx
+ * @description Manager screen: restock several items at once. Pick items from
+ * the list, set each quantity, then Confirm. Everything is saved as one
+ * purchase order (POST /protected/restock with items[]), so either all of the
+ * items are added or none are.
+ * Opened as /restock?stockId=5 (from an Inventory item), that item starts picked.
+ */
 import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  TextInput,
+  ActivityIndicator,
   Modal,
   Platform,
+  ScrollView,
   StatusBar,
-  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
+import ItemQuantityPicker, { type PickedQuantities } from '@/components/ItemQuantityPicker';
 import { showAlert } from '@/utils/alert';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { useStockItems } from '@/hooks/useStockItems';
-import { getToken } from '@/services/authService';
-
+import { getToken, clearToken } from '@/services/authService';
+import { formatNumber } from '@/utils/stock';
+import { ROUTES } from '@/constants/routes';
 
 export default function RestockScreen() {
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const { stockNames, stockIdFor } = useStockItems();
-  const [selectedItem, setSelectedItem] = useState<string>('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [quantity, setQuantity] = useState<string>('');
+  const { stockItems, loadingStocks, reload } = useStockItems();
+  const { stockId } = useLocalSearchParams<{ stockId?: string }>();
+  const [picked, setPicked] = useState<PickedQuantities>(() =>
+    Number(stockId) > 0 ? { [Number(stockId)]: '1' } : {}
+  );
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Only items that exist in the list (a stale ?stockId is ignored).
+  const pickedIds = Object.keys(picked)
+    .map(Number)
+    .filter((id) => stockItems.some((s) => s.id === id));
+  const nameOf = (id: number) => stockItems.find((s) => s.id === id)?.name ?? 'Item';
+
   const handleOpenConfirm = () => {
-    if (!selectedItem) {
-      showAlert('Select Item', 'Please choose an item to restock.');
-      return;
-    }
-    if (!quantity || Number(quantity) <= 0) {
-      showAlert('Invalid Quantity', 'Please enter a valid quantity.');
+    const missing = pickedIds.filter((id) => !(Number(picked[id]) > 0));
+    if (missing.length > 0) {
+      showAlert('Invalid Quantity', `Enter a quantity greater than 0 for ${missing.map(nameOf).join(', ')}.`);
       return;
     }
     setConfirmVisible(true);
@@ -47,21 +61,26 @@ export default function RestockScreen() {
     setSubmitting(true);
     try {
       const token = await getToken();
-      await api.post(
-        API_ROUTES.RESTOCK,
-        {
-          stockId: stockIdFor(selectedItem),
-          itemName: selectedItem,
-          quantity: Number(quantity),
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (!token) {
+        router.replace(ROUTES.LOGIN);
+        return;
+      }
+      const items = pickedIds.map((id) => ({ stockId: id, quantity: Number(picked[id]) }));
+      await api.post(API_ROUTES.RESTOCK, { items }, { headers: { Authorization: `Bearer ${token}` } });
+
+      const summary = items.map((i) => `${nameOf(i.stockId)} +${formatNumber(i.quantity)}`).join('\n');
       setConfirmVisible(false);
-      showAlert('Success', `${selectedItem} restocked (+${quantity})!`, [
-        { text: 'OK', onPress: () => router.push('/stocks' as Href) },
-      ]);
+      setPicked({});
+      reload();
+      showAlert('Restocked', summary, [{ text: 'View Stocks', onPress: () => router.push('/stocks' as Href) }]);
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.message || 'Could not restock item.');
+      setConfirmVisible(false);
+      if (err.response?.status === 401) {
+        await clearToken();
+        router.replace(ROUTES.LOGIN);
+        return;
+      }
+      showAlert('Error', err.response?.data?.message || 'Could not restock. Nothing was added.');
     } finally {
       setSubmitting(false);
     }
@@ -70,71 +89,46 @@ export default function RestockScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.container}>
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={30} color="#111827" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="menu" size={32} color="#111827" />
-          </TouchableOpacity>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.container}>
+          {/* Top Bar */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={30} color="#111827" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Open menu"
+            >
+              <Ionicons name="menu" size={32} color="#111827" />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.pageTitle}>Restock Item</Text>
+          <Text style={styles.pageTitle}>Restock Item</Text>
 
-        {/* Choose Item Dropdown */}
-        <View style={styles.fieldWrapper}>
-          <Text style={styles.label}>Choose Item</Text>
-          <TouchableOpacity
-            style={styles.selectBox}
-            activeOpacity={0.8}
-            onPress={() => setDropdownOpen(!dropdownOpen)}
-          >
-            <Text style={[styles.selectText, !selectedItem && { color: '#374151' }]}>
-              {selectedItem || 'Select'}
-            </Text>
-            <Ionicons
-              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
-              size={22}
-              color="#ef0000"
-            />
-          </TouchableOpacity>
-
-          {dropdownOpen && (
-            <View style={styles.dropdownMenu}>
-              {stockNames.map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.dropdownOption}
-                  onPress={() => {
-                    setSelectedItem(option);
-                    setDropdownOpen(false);
-                  }}
-                >
-                  <Text style={styles.dropdownOptionText}>{option}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Quantity Input & Submit (Behind dropdown when open) */}
-        <View style={[styles.fieldWrapper, { marginTop: 22, zIndex: -1 }]}>
-          <Text style={styles.label}>Quantity</Text>
-          <TextInput
-            style={styles.inputBox}
-            value={quantity}
-            onChangeText={setQuantity}
-            keyboardType="numeric"
-            placeholder="Enter quantity"
+          <ItemQuantityPicker
+            items={stockItems}
+            picked={picked}
+            onChange={setPicked}
+            loading={loadingStocks}
           />
 
-          <TouchableOpacity style={styles.submitBtn} onPress={handleOpenConfirm}>
-            <Text style={styles.submitBtnText}>Restock</Text>
-          </TouchableOpacity>
+          {pickedIds.length > 0 && (
+            <TouchableOpacity style={styles.submitBtn} activeOpacity={0.85} onPress={handleOpenConfirm}>
+              <Text style={styles.submitBtnText}>Confirm</Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
+      </ScrollView>
 
       {/* Confirmation Modal */}
       <Modal
@@ -150,7 +144,7 @@ export default function RestockScreen() {
             </View>
 
             <Text style={styles.modalPrompt}>
-              Are you sure you want to{'\n'}restock this item?
+              Are you sure you want to{'\n'}restock {pickedIds.length === 1 ? 'this item' : `these ${pickedIds.length} items`}?
             </Text>
 
             <View style={styles.modalBtnRow}>
@@ -162,11 +156,7 @@ export default function RestockScreen() {
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleConfirmRestock}
-                disabled={submitting}
-              >
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmRestock} disabled={submitting}>
                 {submitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
@@ -187,6 +177,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fffdf5',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     width: '100%',
@@ -194,101 +187,41 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 22,
     paddingTop: 16,
+    paddingBottom: 40,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: Platform.OS === 'android' ? 8 : 0,
-    marginBottom: 24,
   },
   pageTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontFamily: 'Poppins_700Bold',
     color: '#111827',
     textAlign: 'center',
-    marginBottom: 40,
-  },
-  fieldWrapper: {
-    position: 'relative',
-    zIndex: 10,
-  },
-  label: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11,
-    color: '#1f2937',
-    marginBottom: 6,
-    marginLeft: 4,
-  },
-  selectBox: {
-    height: 48,
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#ffd000',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
-    color: '#111827',
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 66,
-    left: 2,
-    right: 2,
-    backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  dropdownOption: {
-    paddingVertical: 10,
-  },
-  dropdownOptionText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 12.5,
-    color: '#1f2937',
-  },
-  inputBox: {
-    fontFamily: 'Poppins_400Regular',
-    height: 48,
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#ffd000',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 13,
-    color: '#111827',
+    marginTop: 28,
+    marginBottom: 32,
   },
   submitBtn: {
-    marginTop: 28,
+    marginTop: 36,
     alignSelf: 'center',
-    width: 170,
+    width: '55%',
+    minWidth: 170,
     height: 44,
-    backgroundColor: '#d92323',
+    backgroundColor: '#e02424',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   submitBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
     fontFamily: 'Poppins_700Bold',
+    color: '#ffffff',
+    fontSize: 15,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    backgroundColor: 'rgba(15,16,21,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -296,7 +229,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: '#fdfbf0',
+    backgroundColor: '#FDFBF0',
     borderRadius: 34,
     paddingVertical: 32,
     paddingHorizontal: 22,
@@ -308,52 +241,55 @@ const styles = StyleSheet.create({
     height: 84,
     borderRadius: 42,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#0F1015',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
-    backgroundColor: '#fffdf7',
+    backgroundColor: '#ffffff',
   },
   modalPrompt: {
-    fontSize: 16,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 15,
     color: '#ef0000',
     textAlign: 'center',
     lineHeight: 23,
-    fontFamily: 'Poppins_400Regular',
     marginBottom: 26,
   },
   modalBtnRow: {
     flexDirection: 'row',
     width: '100%',
-    justifyContent: 'space-between',
     gap: 12,
   },
   cancelBtn: {
     flex: 1,
-    height: 54,
+    height: 50,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#ef0000',
-    backgroundColor: '#fffdf7',
+    backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
   },
   cancelBtnText: {
-    color: '#ef0000',
-    fontSize: 13,
     fontFamily: 'Poppins_700Bold',
+    color: '#ef0000',
+    fontSize: 15,
   },
   confirmBtn: {
     flex: 1,
-    height: 54,
+    height: 50,
     borderRadius: 14,
     backgroundColor: '#ef0000',
     justifyContent: 'center',
     alignItems: 'center',
   },
   confirmBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
     fontFamily: 'Poppins_700Bold',
+    color: '#ffffff',
+    fontSize: 15,
   },
 });
+
+// TEST: Confirm appears only after an item is picked; a picked item with quantity 0 shows "Invalid Quantity"
+// TEST: restocking 2 items sends one request with items[2]; on error nothing is added
+// TEST: /restock?stockId=<id> opens with that item picked at quantity 1; an unknown id is ignored

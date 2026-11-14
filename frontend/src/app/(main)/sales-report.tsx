@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,11 +6,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  ScrollView,
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
@@ -24,6 +25,16 @@ type SalesItem = {
   label: string;
   value: number;
 };
+
+/** One row of the Details table: an item, how many sold, its share of all items sold. */
+type DetailRow = {
+  name: string;
+  sold: number;
+  percent: number;
+};
+
+/** 50 -> "50", 31.25 -> "31.25", 12.5 -> "12.50" */
+const formatPercent = (p: number): string => (Number.isInteger(p) ? String(p) : p.toFixed(2));
 
 const CHART_HEIGHT = 170;
 
@@ -42,6 +53,7 @@ export default function SalesReportScreen() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [salesData, setSalesData] = useState<SalesItem[]>([]);
   const [maxScale, setMaxScale] = useState<number>(8);
+  const [details, setDetails] = useState<DetailRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const setFallback = () => {
@@ -60,6 +72,7 @@ export default function SalesReportScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      setDetails(res.data?.details || []);
       const fetched: SalesItem[] = res.data?.salesData || [];
       if (fetched.length > 0) {
         setSalesData(fetched);
@@ -70,15 +83,19 @@ export default function SalesReportScreen() {
       }
     } catch (err: any) {
       setFallback();
+      setDetails([]);
       showAlert('Error', err.response?.data?.message || 'Could not load the sales report.');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadReport(period);
-  }, [period, loadReport]);
+  // Reload whenever this screen is shown, and when the period changes.
+  useFocusEffect(
+    useCallback(() => {
+      loadReport(period);
+    }, [period, loadReport])
+  );
 
   const gridSteps = [
     maxScale,
@@ -91,6 +108,7 @@ export default function SalesReportScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>
@@ -201,7 +219,53 @@ export default function SalesReportScreen() {
             </View>
           </View>
         )}
+
+        {/* Details: every item, its sales and its share of all items sold */}
+        {!loading && (
+          <View style={styles.detailsSection}>
+            <Text style={styles.detailsTitle}>Details:</Text>
+            <View style={styles.detailsTable}>
+              <View style={styles.detailsRow}>
+                <View style={[styles.colItem, styles.colLine]}>
+                  <Text style={[styles.detailsHeader, styles.centered]}>Items</Text>
+                </View>
+                <View style={[styles.colNum, styles.colLine]}>
+                  <Text style={[styles.detailsHeader, styles.centered]}>Sales</Text>
+                </View>
+                <View style={styles.colNum}>
+                  <Text style={[styles.detailsHeader, styles.centered]}>Percent (%)</Text>
+                </View>
+              </View>
+              {details.length === 0 ? (
+                <View style={styles.detailsRow}>
+                  <View style={styles.colAll}>
+                    <Text style={styles.detailsCell}>No items to show.</Text>
+                  </View>
+                </View>
+              ) : (
+                details.map((d) => (
+                  <View key={d.name} style={styles.detailsRow}>
+                    <View style={[styles.colItem, styles.colLine]}>
+                      <Text style={styles.detailsCell} numberOfLines={1}>
+                        {d.name}
+                      </Text>
+                    </View>
+                    <View style={[styles.colNum, styles.colLine]}>
+                      <Text style={[styles.detailsCell, styles.centered]}>{d.sold > 0 ? d.sold : '--'}</Text>
+                    </View>
+                    <View style={styles.colNum}>
+                      <Text style={[styles.detailsCell, styles.centered]}>
+                        {d.sold > 0 ? formatPercent(d.percent) : '--'}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        )}
       </View>
+      </ScrollView>
       <RoleSideDrawer visible={menuVisible} onClose={() => setMenuVisible(false)} />
     </SafeAreaView>
   );
@@ -212,6 +276,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fffdf5',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     width: '100%',
@@ -219,6 +286,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 14,
     paddingTop: 16,
+    paddingBottom: 32,
   },
   topBar: {
     flexDirection: 'row',
@@ -361,6 +429,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 2,
   },
+  detailsSection: {
+    marginTop: 28,
+    paddingHorizontal: 4,
+  },
+  detailsTitle: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: '#ef0000',
+    marginBottom: 8,
+  },
+  // Lines between every row and between the columns, no outer box (design).
+  detailsTable: {
+    borderTopWidth: 1,
+    borderTopColor: '#F8D3C6',
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8D3C6',
+  },
+  detailsHeader: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#1f2937',
+  },
+  detailsCell: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#1f2937',
+  },
+  centered: {
+    textAlign: 'center',
+  },
+  colItem: {
+    flex: 2,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  colNum: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  colAll: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  colLine: {
+    borderRightWidth: 1,
+    borderRightColor: '#F8D3C6',
+  },
   barLabel: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 8.5,
@@ -368,3 +490,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+// TEST: Details lists every menu item; items with no sales show "--"; 31.25 shows "31.25", 50 shows "50"

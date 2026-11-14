@@ -23,7 +23,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
+import { getUserRole, subscribeAppTheme, markSaleCompleted } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { newRequestId } from '@/constants/app';
 
@@ -34,9 +34,6 @@ const COLORS = {
   cream: '#FFFDF5',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
-  darkBg: '#181920',
-  darkCard: '#22242E',
-  darkBorder: '#2E3240',
 };
 
 const KEYPAD_ROWS = [
@@ -56,18 +53,15 @@ export default function PosPaymentScreen() {
     Poppins_700Bold_Italic,
   });
 
-  // Role, Dark Mode & Side Drawer State
+  // Role & Side Drawer State
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
-  const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
 
-  const isCashierDark = role === 'cashier' && darkMode;
-  const iconColor = isCashierDark ? COLORS.white : COLORS.nearBlack;
+  const iconColor = COLORS.nearBlack;
   const textColor = { color: iconColor };
 
   useEffect(() => {
     return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
       setRole(getUserRole());
     });
   }, []);
@@ -149,6 +143,7 @@ export default function PosPaymentScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setConfirmVisible(false);
+      markSaleCompleted(); // the POS clears its cart when shown again
       router.replace('/transaction-success' as any);
     } catch (err: any) {
       // The sale was NOT saved — never show a fake success.
@@ -170,15 +165,15 @@ export default function PosPaymentScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={[styles.center, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
-      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
           {/* Top Bar */}
@@ -198,14 +193,13 @@ export default function PosPaymentScreen() {
           </View>
 
           {/* Summary Table Card (Total / Cash / Change) */}
-          <View style={[styles.summaryCard, isCashierDark && { backgroundColor: COLORS.darkCard }]}>
+          <View style={styles.summaryCard}>
             <View style={styles.yellowTopStrip} />
 
             <View
               style={[
                 styles.summaryRow,
                 styles.rowBorder,
-                isCashierDark && { borderBottomColor: COLORS.darkBorder },
               ]}
             >
               <Text style={[styles.summaryLabel, textColor]}>Total</Text>
@@ -216,7 +210,6 @@ export default function PosPaymentScreen() {
               style={[
                 styles.summaryRow,
                 styles.rowBorder,
-                isCashierDark && { borderBottomColor: COLORS.darkBorder },
               ]}
             >
               <Text style={[styles.summaryLabel, textColor]}>Cash</Text>
@@ -233,10 +226,7 @@ export default function PosPaymentScreen() {
             </View>
 
             <View
-              style={[
-                styles.grayBottomStrip,
-                isCashierDark && { backgroundColor: COLORS.darkBorder },
-              ]}
+              style={styles.grayBottomStrip}
             />
           </View>
 
@@ -244,10 +234,7 @@ export default function PosPaymentScreen() {
             /* State 1: Keypad Entry matching image_abc194.png */
             <>
               <View
-                style={[
-                  styles.inputDisplayBox,
-                  isCashierDark && { backgroundColor: COLORS.darkCard },
-                ]}
+                style={styles.inputDisplayBox}
               >
                 <Text style={[styles.inputValueText, textColor]}>{formattedCashInput()}</Text>
                 <TouchableOpacity
@@ -264,13 +251,7 @@ export default function PosPaymentScreen() {
                     {row.map((num) => (
                       <TouchableOpacity
                         key={num}
-                        style={[
-                          styles.keyButton,
-                          isCashierDark && {
-                            backgroundColor: COLORS.darkCard,
-                            borderColor: '#4B5563',
-                          },
-                        ]}
+                        style={styles.keyButton}
                         activeOpacity={0.7}
                         onPress={() => handleDigitPress(num)}
                       >
@@ -283,32 +264,17 @@ export default function PosPaymentScreen() {
                 {/* Bottom Row: Decimal, 0, Enter */}
                 <View style={styles.keypadRow}>
                   <TouchableOpacity
-                    style={[
-                      styles.keyButton,
-                      isCashierDark && {
-                        backgroundColor: COLORS.darkCard,
-                        borderColor: '#4B5563',
-                      },
-                    ]}
+                    style={styles.keyButton}
                     activeOpacity={0.7}
                     onPress={() => handleDigitPress('.')}
                   >
                     <View
-                      style={[
-                        styles.dotCircle,
-                        isCashierDark && { backgroundColor: COLORS.white },
-                      ]}
+                      style={styles.dotCircle}
                     />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[
-                      styles.keyButton,
-                      isCashierDark && {
-                        backgroundColor: COLORS.darkCard,
-                        borderColor: '#4B5563',
-                      },
-                    ]}
+                    style={styles.keyButton}
                     activeOpacity={0.7}
                     onPress={() => handleDigitPress('0')}
                   >
@@ -356,7 +322,7 @@ export default function PosPaymentScreen() {
         }}
       >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, isCashierDark && { backgroundColor: COLORS.darkCard }]}>
+          <View style={styles.modalCard}>
             <View style={styles.modalIconCircle}>
               <Ionicons name="cash-outline" size={44} color={COLORS.red} />
             </View>
@@ -411,8 +377,6 @@ export default function PosPaymentScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );

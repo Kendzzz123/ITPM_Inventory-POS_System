@@ -139,6 +139,41 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    id: '005_waste_on_chosen_date',
+    description: 'Record Waste saves the date picked on the screen (sp_record_waste_on)',
+    run: async () => {
+      // Same SQL as database/pos_schema.sql. No DELIMITER needed: each CREATE is sent on its own.
+      await pool.query('DROP PROCEDURE IF EXISTS sp_record_waste_on');
+      await pool.query(
+        `CREATE PROCEDURE sp_record_waste_on(IN p_user INT UNSIGNED, IN p_req CHAR(36), IN p_stock INT UNSIGNED,
+                                             IN p_qty DECIMAL(12,3), IN p_reason VARCHAR(255), IN p_date DATE,
+                                             OUT o_waste_id INT UNSIGNED)
+         BEGIN
+           DECLARE v_bal DECIMAL(12,3);
+           DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+           IF p_date > CURDATE() THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Waste date cannot be in the future'; END IF;
+           START TRANSACTION;
+           SELECT Current_Quantity INTO v_bal FROM Stock_Items WHERE Stock_ID=p_stock FOR UPDATE;
+           IF v_bal IS NULL OR v_bal < p_qty THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown stock item or waste exceeds balance'; END IF;
+           INSERT INTO Waste_Log(Stock_ID, Quantity, Reason, Date, User_ID, Client_Request_ID)
+             VALUES (p_stock, p_qty, p_reason, COALESCE(TIMESTAMP(p_date, CURTIME()), NOW()), p_user, p_req);
+           SET o_waste_id = LAST_INSERT_ID();
+           UPDATE Stock_Items SET Current_Quantity = Current_Quantity - p_qty WHERE Stock_ID=p_stock;
+           INSERT INTO Stock_Movements(Stock_ID, Type, Quantity, User_ID, Waste_ID) VALUES (p_stock,'Waste',-p_qty,p_user,o_waste_id);
+           COMMIT;
+         END`
+      );
+      await pool.query('DROP PROCEDURE IF EXISTS sp_record_waste');
+      await pool.query(
+        `CREATE PROCEDURE sp_record_waste(IN p_user INT UNSIGNED, IN p_req CHAR(36), IN p_stock INT UNSIGNED,
+                                          IN p_qty DECIMAL(12,3), IN p_reason VARCHAR(255), OUT o_waste_id INT UNSIGNED)
+         BEGIN
+           CALL sp_record_waste_on(p_user, p_req, p_stock, p_qty, p_reason, NULL, o_waste_id);
+         END`
+      );
+    },
+  },
 ];
 
 /**

@@ -1,4 +1,9 @@
-// stock-alert.tsx
+/**
+ * @file stock-alert.tsx
+ * @description Stock Alert: checks on open and every 15 seconds whether any
+ * menu item is low, and lists them as "Whole Juicy Chicken (10 remaining)".
+ * Uses the same item list as Inventory (services/inventory.ts).
+ */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
@@ -12,49 +17,39 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, getUserRole, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
+import { getUserRole, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { showAlert } from '@/utils/alert';
-import { toStockLevel, formatNumber, type StockLevel } from '@/utils/stock';
+import { formatNumber } from '@/utils/stock';
+import { fetchInventory, remainingLabel, type InventoryCard } from '@/services/inventory';
 
 
 /** How often the screen re-checks the stock while it is open. */
 const RECHECK_MS = 15000;
 
-/** "2:45 PM" */
-function formatTime(date: Date): string {
-  const h = date.getHours();
-  const m = String(date.getMinutes()).padStart(2, '0');
-  return `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
-}
-
 export default function StockAlertScreen() {
   const router = useRouter();
   // null = not known yet (first check still running, or it failed)
   const [hasLowStock, setHasLowStock] = useState<boolean | null>(null);
-  const [lowItems, setLowItems] = useState<StockLevel[]>([]);
+  const [lowItems, setLowItems] = useState<InventoryCard[]>([]);
   const [loading, setLoading] = useState<boolean>(true); // first check only
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
 
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
-  const [darkMode, setDarkMode] = useState<boolean>(getDarkMode());
 
-  const isCashierDark = role === 'cashier' && darkMode;
   const isManager = role === 'manager';
-  const textColor = { color: isCashierDark ? '#FFFFFF' : '#111827' };
+  const textColor = { color: '#111827' };
 
   useEffect(() => {
     return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
       setRole(getUserRole());
     });
   }, []);
 
-  // Role (for dark mode and the side menu) — loaded once.
+  // Role (for the side menu) — loaded once.
   useEffect(() => {
     (async () => {
       const token = await getToken();
@@ -72,7 +67,7 @@ export default function StockAlertScreen() {
   }, []);
 
   /**
-   * Asks the server whether any stock is at or below its minimum level.
+   * Checks whether any menu item is at or below its minimum stock level.
    * @param showErrors false for the automatic re-checks, so a dropped connection
    *   doesn't pop up an alert every 15 seconds (the last result stays on screen).
    */
@@ -84,14 +79,9 @@ export default function StockAlertScreen() {
           router.replace('/');
           return;
         }
-        const res = await api.get(API_ROUTES.STOCKS, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const stocks = ((res.data?.stocks || []) as unknown[]).map(toStockLevel);
-        const low = stocks.filter((s) => s.isLow);
+        const low = (await fetchInventory(token)).filter((c) => c.isLow);
         setLowItems(low);
-        setHasLowStock(Boolean(res.data?.hasLowStock) || low.length > 0);
-        setLastChecked(new Date());
+        setHasLowStock(low.length > 0);
       } catch (err: any) {
         if (showErrors) {
           showAlert('Error', err.response?.data?.message || 'Could not check stock levels.');
@@ -115,10 +105,10 @@ export default function StockAlertScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, isCashierDark && { backgroundColor: '#181920' }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
         {/* Top Bar */}
         <View style={styles.topBar}>
@@ -129,14 +119,14 @@ export default function StockAlertScreen() {
             <Ionicons
               name="chevron-back"
               size={30}
-              color={isCashierDark ? '#FFFFFF' : '#111827'}
+              color={'#111827'}
             />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMenuVisible(true)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="menu" size={32} color={isCashierDark ? '#FFFFFF' : '#111827'} />
+            <Ionicons name="menu" size={32} color={'#111827'} />
           </TouchableOpacity>
         </View>
 
@@ -159,39 +149,18 @@ export default function StockAlertScreen() {
               <Text style={[styles.statusHeading, textColor]}>Low Stock!</Text>
               <Text style={[styles.statusSubtext, textColor]}>
                 {isManager
-                  ? 'You need to restock these items:'
+                  ? 'You need to restock the following menu:'
                   : 'These items are running low. Let the manager know:'}
               </Text>
 
-              <View style={[styles.lowList, isCashierDark && styles.lowListDark]}>
-                {lowItems.map((item, idx) => (
-                  <View
-                    key={item.id}
-                    style={[styles.lowRow, idx > 0 && styles.lowRowBorder]}
-                    accessibilityLabel={`${item.name}: ${formatNumber(item.quantity)} left, minimum ${formatNumber(item.minLevel)} ${item.unit}`}
-                  >
-                    <Text style={[styles.lowName, textColor]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.lowQty}>
-                      {formatNumber(item.quantity)}
-                      <Text style={[styles.lowMin, isCashierDark && { color: '#9CA3AF' }]}>
-                        {' '}/ min {formatNumber(item.minLevel)} {item.unit}
-                      </Text>
-                    </Text>
-                  </View>
+              <View style={styles.lowList}>
+                {lowItems.map((item) => (
+                  <Text key={item.name} style={[styles.lowRow, textColor]}>
+                    {'\u2022  '}
+                    {item.name} <Text style={styles.lowQty}>({remainingLabel(item, formatNumber)})</Text>
+                  </Text>
                 ))}
               </View>
-
-              {isManager && (
-                <TouchableOpacity
-                  style={styles.restockBtn}
-                  onPress={() => router.push('/restock' as Href)}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.restockBtnText}>Restock now</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             <View style={styles.stateWrapper}>
@@ -203,11 +172,7 @@ export default function StockAlertScreen() {
             </View>
           )}
 
-          {!loading && lastChecked && (
-            <Text style={[styles.lastChecked, textColor]}>
-              Last checked {formatTime(lastChecked)} · updates automatically
-            </Text>
-          )}
+          
         </ScrollView>
       </View>
 
@@ -215,8 +180,6 @@ export default function StockAlertScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );
@@ -282,60 +245,17 @@ const styles = StyleSheet.create({
   },
   lowList: {
     alignSelf: 'stretch',
-    marginTop: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#FCA5A5',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-  },
-  lowListDark: {
-    backgroundColor: '#22242E',
-    borderColor: '#7F1D1D',
+    marginTop: 14,
+    paddingHorizontal: 36,
   },
   lowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    gap: 12,
-  },
-  lowRowBorder: {
-    borderTopWidth: 1,
-    borderTopColor: '#FDE2E2',
-  },
-  lowName: {
-    flex: 1,
-    fontFamily: 'Poppins_500Medium',
-    fontSize: 13.5,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    lineHeight: 20,
   },
   lowQty: {
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 13.5,
     color: '#ef0000',
   },
-  lowMin: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11.5,
-    color: '#6B7280',
-  },
-  restockBtn: {
-    marginTop: 18,
-    backgroundColor: '#e60000',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
-  restockBtnText: {
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  lastChecked: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 28,
-    opacity: 0.8,
-  },
 });
+
+// TEST: with Whole at 10 (min 10) the list shows Whole Juicy Chicken (10 remaining) and Half Juicy Chicken (20 remaining)

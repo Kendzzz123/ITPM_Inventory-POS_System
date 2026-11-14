@@ -2,7 +2,7 @@
  * @file reports.routes.js
  * @description Dashboard, sales report and transaction history (JWT required).
  *   GET /protected/dashboard-report
- *   GET /protected/sales-report?period=Daily|Weekly|Monthly|Yearly
+ *   GET /protected/sales-report?period=Daily|Weekly|Monthly|Yearly  (chart + per-item details)
  *   GET /protected/transactions?dateFilter=&paymentMethod=&startDate=&endDate=
  *   GET /protected/transactions/export?(same filters)   (manager only — Export to Excel)
  */
@@ -14,6 +14,7 @@ const pool = require('../config/db');
 const { authorizeRoles } = require('../middleware/auth');
 const { slashDateToSql } = require('../utils/helpers');
 const { HttpError } = require('../middleware/errorHandler');
+const { menuOrder } = require('../config/catalog');
 
 const router = express.Router();
 
@@ -43,6 +44,34 @@ async function topSellers(period, limit = 4) {
     [limit]
   );
   return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/**
+ * Every menu item with how many were sold in the period and its share of all
+ * items sold, most sold first. Items on the menu with no sales are included
+ * (sold 0); retired items appear only if they sold in the period.
+ * @param {keyof typeof PERIOD_FILTERS} period
+ * @returns {Promise<{ details: {name: string, sold: number, percent: number}[], totalSold: number }>}
+ */
+async function salesDetails(period) {
+  const [rows] = await pool.query(
+    `SELECT m.Item_Name AS name, m.Is_Active AS active,
+            CAST(COALESCE(SUM(od.Quantity), 0) AS UNSIGNED) AS sold
+       FROM Menu_Items m
+       LEFT JOIN (Order_Details od JOIN Orders o ON o.Order_ID = od.Order_ID AND ${PERIOD_FILTERS[period]})
+              ON od.Item_ID = m.Item_ID
+      GROUP BY m.Item_ID, m.Item_Name, m.Is_Active
+     HAVING active = 1 OR sold > 0`
+  );
+  const totalSold = rows.reduce((sum, r) => sum + Number(r.sold), 0);
+  const details = rows
+    .map((r) => ({
+      name: r.name,
+      sold: Number(r.sold),
+      percent: totalSold ? Math.round((Number(r.sold) / totalSold) * 10000) / 100 : 0,
+    }))
+    .sort((a, b) => b.sold - a.sold || menuOrder(a.name) - menuOrder(b.name));
+  return { details, totalSold };
 }
 
 /** Common SELECT for transaction rows. Payment method is always Cash (no column yet). */
@@ -86,7 +115,8 @@ router.get('/sales-report', authorizeRoles('manager'), async (req, res) => {
   if (!PERIOD_FILTERS[period]) {
     throw new HttpError(400, 'period must be Daily, Weekly, Monthly or Yearly.');
   }
-  return res.json({ salesData: await topSellers(period) });
+  const [salesData, { details, totalSold }] = await Promise.all([topSellers(period), salesDetails(period)]);
+  return res.json({ salesData, details, totalSold });
 });
 
 /**
@@ -136,5 +166,6 @@ router.get('/transactions/export', authorizeRoles('manager'), async (req, res) =
 module.exports = router;
 
 // TEST: sales-report rejects unknown period with 400
+// TEST: sales-report details list every active menu item; percents add up to 100 when anything sold
 // TEST: transactions Custom filter converts MM/DD/YYYY and filters inclusively
 // TEST: transactions/export -> 403 for a cashier token, 200 with rows for a manager token

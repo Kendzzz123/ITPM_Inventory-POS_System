@@ -1,5 +1,5 @@
 // cashier-dashboard.tsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -25,7 +25,7 @@ import {
 } from '@expo-google-fonts/poppins';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, setGlobalUserRole, subscribeAppTheme } from '@/store/appState';
+import { setGlobalUserRole } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { imageFor } from '@/constants/images';
 
@@ -39,8 +39,6 @@ const COLORS = {
   cream: '#FFFDF5',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
-  darkBg: '#181920',
-  darkCard: '#22242E',
 };
 
 export default function CashierDashboardScreen() {
@@ -59,22 +57,11 @@ export default function CashierDashboardScreen() {
     FEATURED_STOCK.map((name) => ({ name, quantity: 0 }))
   );
   const [alertMessage, setAlertMessage] = useState('');
-  const [darkMode, setDarkMode] = useState(getDarkMode());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const textColor = { color: darkMode ? COLORS.white : COLORS.nearBlack };
-
-  useEffect(() => {
-    return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
-    });
-  }, []);
-
-  const toggleDarkMode = () => {
-    setGlobalDarkMode(!darkMode);
-  };
+  const textColor = { color: COLORS.nearBlack };
 
   const loadData = useCallback(async () => {
     try {
@@ -105,15 +92,7 @@ export default function CashierDashboardScreen() {
         }))
       );
 
-      const lowItems = list.filter((s) => s.quantity <= s.minLevel).map((s) => s.name);
-      if (lowItems.length === 0) {
-        setAlertMessage('All stocks are at a healthy level.');
-      } else if (lowItems.length === 1) {
-        setAlertMessage(`${lowItems[0]} is running low!`);
-      } else {
-        const extra = lowItems.length > 2 ? ` (+${lowItems.length - 2} more)` : '';
-        setAlertMessage(`${lowItems.slice(0, 2).join(' and ')}${extra} are running low!`);
-      }
+      
     } catch (err: any) {
       const status = err.response?.status;
       if (status === 401 || status === 403) {
@@ -142,7 +121,7 @@ export default function CashierDashboardScreen() {
 
   if (!fontsLoaded || loading) {
     return (
-      <View style={[styles.center, darkMode && { backgroundColor: COLORS.darkBg }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
@@ -150,10 +129,10 @@ export default function CashierDashboardScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, darkMode && { backgroundColor: COLORS.darkBg }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -171,7 +150,7 @@ export default function CashierDashboardScreen() {
               <Ionicons
                 name="menu"
                 size={34}
-                color={darkMode ? COLORS.white : COLORS.nearBlack}
+                color={COLORS.nearBlack}
               />
             </TouchableOpacity>
           </View>
@@ -196,7 +175,7 @@ export default function CashierDashboardScreen() {
             {featuredStock.map((item) => (
               <View
                 key={item.name}
-                style={[styles.stockCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+                style={styles.stockCard}
               >
                 <View style={styles.imageArea}>
                   <Image
@@ -215,20 +194,7 @@ export default function CashierDashboardScreen() {
             ))}
           </View>
 
-          {/* Warning Banner */}
-          <TouchableOpacity
-            style={[styles.warningBanner, darkMode && { backgroundColor: COLORS.darkCard }]}
-            activeOpacity={0.85}
-            onPress={() => router.push('/stock-alert' as Href)}
-          >
-            <Ionicons name="warning" size={24} color={COLORS.yellow} />
-            <Text
-              style={[styles.warningText, darkMode && { color: COLORS.yellow }]}
-              numberOfLines={1}
-            >
-              {alertMessage}
-            </Text>
-          </TouchableOpacity>
+          
 
           {/* See All Link */}
           <TouchableOpacity
@@ -241,7 +207,7 @@ export default function CashierDashboardScreen() {
           {/* Navigation Action Cards */}
           <View style={styles.actionList}>
             <TouchableOpacity
-              style={[styles.actionCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+              style={styles.actionCard}
               onPress={() => router.push('/pos' as Href)}
             >
               <MaterialCommunityIcons name="cash-register" size={32} color={COLORS.yellow} />
@@ -250,7 +216,7 @@ export default function CashierDashboardScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionCard, darkMode && { backgroundColor: COLORS.darkCard }]}
+              style={styles.actionCard}
               onPress={() => router.push('/transaction-history' as Href)}
             >
               <Ionicons name="document-text-outline" size={32} color={COLORS.yellow} />
@@ -265,8 +231,6 @@ export default function CashierDashboardScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role="cashier"
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
       />
     </SafeAreaView>
   );
@@ -374,23 +338,7 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: COLORS.nearBlack,
   },
-  warningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFDF7',
-    borderWidth: 1.2,
-    borderColor: COLORS.yellow,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 10,
-  },
-  warningText: {
-    flex: 1,
-    fontFamily: 'Poppins_400Regular_Italic',
-    fontSize: 10.5,
-    color: '#856806',
-  },
+  
   seeAllBtn: {
     alignSelf: 'flex-end',
     marginTop: 10,

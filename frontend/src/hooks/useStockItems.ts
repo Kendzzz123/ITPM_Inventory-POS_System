@@ -4,7 +4,8 @@
  * Record Waste dropdowns (these used to be hard-coded menu names, which the
  * backend could not match to stock items).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { showAlert } from '@/utils/alert';
@@ -30,9 +31,12 @@ export function useStockItems() {
     }
   }, []);
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  // Reload whenever the screen using this is shown (stock changes after sales).
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload])
+  );
 
   /** Names for the dropdown. */
   const stockNames = stockItems.map((s) => s.name);

@@ -2,9 +2,9 @@
  * @file inventory.routes.js
  * @description Stock levels, restocking and waste (JWT required).
  *   GET  /protected/stocks
- *   POST /protected/restock         (manager)
+ *   POST /protected/restock         (manager) one item, or items: [{ stockId, quantity }]
  *   POST /protected/waste           (manager)
- *   GET  /protected/waste-history
+ *   GET  /protected/waste-history?dateFilter=Today|This Week|This Month|Custom&startDate=&endDate=
  */
 
 'use strict';
@@ -13,7 +13,7 @@ const express = require('express');
 const pool = require('../config/db');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
-const { positiveNumber, newRequestId } = require('../utils/helpers');
+const { positiveNumber, newRequestId, slashDateToSql, localDateSql } = require('../utils/helpers');
 const { menuOrder } = require('../config/catalog');
 
 const router = express.Router();
@@ -60,28 +60,49 @@ router.get('/stocks', async (req, res) => {
   return res.json({ stocks, hasLowStock: stocks.some((s) => s.isLow) });
 });
 
-// POST /protected/restock — creates a purchase order and receives it (sp_receive_po)
+/** Most items one restock may hold (the screen lists fewer than this). */
+const MAX_RESTOCK_ITEMS = 50;
+
+// POST /protected/restock — creates ONE purchase order and receives it (sp_receive_po).
+// Body: { items: [{ stockId, quantity }, ...] }  or the older single { stockId | itemName, quantity }.
+// All items are added together or none are (the procedure is one transaction).
 router.post('/restock', authorizeRoles('manager'), async (req, res) => {
-  const { stockId, itemName, quantity } = req.body ?? {};
-  const qty = positiveNumber(quantity, 'Quantity');
+  const body = req.body ?? {};
+  const list = Array.isArray(body.items)
+    ? body.items
+    : [{ stockId: body.stockId, itemName: body.itemName, quantity: body.quantity }];
+  if (list.length === 0) throw new HttpError(400, 'Choose at least one item to restock.');
+  if (list.length > MAX_RESTOCK_ITEMS) {
+    throw new HttpError(400, `A restock can have at most ${MAX_RESTOCK_ITEMS} items.`);
+  }
 
   const conn = await pool.getConnection();
   try {
-    const targetId = await resolveStockId(conn, { stockId, itemName });
+    // Check every line first; the same item twice is added up into one line.
+    const lines = new Map(); // Stock_ID -> quantity
+    for (const item of list) {
+      const qty = positiveNumber(item?.quantity, 'Quantity');
+      const targetId = await resolveStockId(conn, { stockId: item?.stockId, itemName: item?.itemName });
+      lines.set(targetId, (lines.get(targetId) || 0) + qty);
+    }
 
     await conn.beginTransaction();
     const [po] = await conn.query('INSERT INTO Purchase_Orders (Order_Date) VALUES (NOW())');
-    await conn.query('INSERT INTO Purchase_Order_Items (PO_ID, Stock_ID, Quantity) VALUES (?, ?, ?)', [
-      po.insertId,
-      targetId,
-      qty,
-    ]);
+    for (const [targetId, qty] of lines) {
+      await conn.query('INSERT INTO Purchase_Order_Items (PO_ID, Stock_ID, Quantity) VALUES (?, ?, ?)', [
+        po.insertId,
+        targetId,
+        qty,
+      ]);
+    }
     await conn.commit();
 
-    // Procedure runs its own transaction: updates balance + ledger atomically.
+    // Procedure runs its own transaction: updates every balance + the ledger atomically.
     await conn.query('CALL sp_receive_po(?, ?)', [po.insertId, req.user.id]);
 
-    return res.json({ message: 'Item restocked successfully!' });
+    const message =
+      lines.size === 1 ? 'Item restocked successfully!' : `${lines.size} items restocked successfully!`;
+    return res.json({ message, poId: po.insertId, items: lines.size });
   } catch (err) {
     await conn.rollback().catch(() => {});
     throw err;
@@ -90,26 +111,53 @@ router.post('/restock', authorizeRoles('manager'), async (req, res) => {
   }
 });
 
-// POST /protected/waste — records waste via sp_record_waste
+// POST /protected/waste — records waste via sp_record_waste_on
+// wasteDate (MM/DD/YYYY, optional): the day picked on Record Waste; empty = now.
 router.post('/waste', authorizeRoles('manager'), async (req, res) => {
-  const { stockId, itemName, quantity, reason, clientRequestId } = req.body ?? {};
+  const { stockId, itemName, quantity, reason, clientRequestId, wasteDate } = req.body ?? {};
   const qty = positiveNumber(quantity, 'Quantity');
   const cleanReason = String(reason || 'Recorded waste').trim().slice(0, 255) || 'Recorded waste';
+  const day = slashDateToSql(wasteDate); // null when not given; 400 when malformed
+  if (day && day > localDateSql()) throw new HttpError(400, 'Waste date cannot be in the future.');
 
   const targetId = await resolveStockId(pool, { stockId, itemName });
-  await pool.query('CALL sp_record_waste(?, ?, ?, ?, ?, @waste_id)', [
-    req.user.id,
-    newRequestId(clientRequestId),
-    targetId,
-    qty,
-    cleanReason,
-  ]);
+  const args = [req.user.id, newRequestId(clientRequestId), targetId, qty, cleanReason];
+  try {
+    await pool.query('CALL sp_record_waste_on(?, ?, ?, ?, ?, ?, @waste_id)', [...args, day]);
+  } catch (err) {
+    // Database not upgraded yet (migration 005): record it dated today instead.
+    if (err.code !== 'ER_SP_DOES_NOT_EXIST') throw err;
+    await pool.query('CALL sp_record_waste(?, ?, ?, ?, ?, @waste_id)', args);
+  }
 
   return res.json({ message: 'Waste recorded successfully!' });
 });
 
-// GET /protected/waste-history
+/** Date conditions for the Waste History filter (same choices as Transaction History). */
+const WASTE_DATE_FILTERS = {
+  Today: 'DATE(w.Date) = CURDATE()',
+  'This Week': 'YEARWEEK(w.Date, 1) = YEARWEEK(CURDATE(), 1)',
+  'This Month': 'YEAR(w.Date) = YEAR(CURDATE()) AND MONTH(w.Date) = MONTH(CURDATE())',
+};
+
+// GET /protected/waste-history — optional date filter, newest first
 router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
+  const { dateFilter, startDate, endDate } = req.query;
+  // old Raw Chicken / Raw Pork / ... waste stays in the DB, just not listed
+  const conditions = ['s.Is_Active = 1'];
+  const params = [];
+
+  if (WASTE_DATE_FILTERS[dateFilter]) {
+    conditions.push(WASTE_DATE_FILTERS[dateFilter]);
+  } else if (dateFilter === 'Custom') {
+    const from = slashDateToSql(startDate);
+    const to = slashDateToSql(endDate);
+    if (!from || !to) throw new HttpError(400, 'Start and end dates are required (MM/DD/YYYY).');
+    if (from > to) throw new HttpError(400, 'The start date must be on or before the end date.');
+    conditions.push('DATE(w.Date) BETWEEN ? AND ?');
+    params.push(from, to);
+  }
+
   const [rows] = await pool.query(
     `SELECT CAST(w.Waste_ID AS CHAR) AS id,
             DATE_FORMAT(w.Date, '%m/%d/%Y') AS date,
@@ -118,8 +166,9 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
             w.Reason AS reason
        FROM Waste_Log w
        JOIN Stock_Items s ON w.Stock_ID = s.Stock_ID
-      WHERE s.Is_Active = 1 -- old Raw Chicken / Raw Pork / ... waste stays in the DB, just not listed
-      ORDER BY w.Date DESC, w.Waste_ID DESC`
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY w.Date DESC, w.Waste_ID DESC`,
+    params
   );
   return res.json({ history: rows });
 });
@@ -127,5 +176,8 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
 module.exports = router;
 
 // TEST: restock with unknown itemName -> 404 and no Purchase_Orders row is created
+// TEST: restock items [A x5, B x3] -> one PO with 2 lines, both balances up; one bad item -> 404 and nothing added
 // TEST: stocks / restock / waste / waste-history ignore hidden stock (Is_Active = 0)
+// TEST: waste-history?dateFilter=Today -> only today's waste; Custom 11/01/2026-11/14/2026 -> inclusive range; Custom with a missing date -> 400
+// TEST: waste with wasteDate 11/13/2026 -> Waste History shows 11/13/2026; a future wasteDate -> 400
 // TEST: waste larger than the balance -> 400 "Unknown stock item or waste exceeds balance"

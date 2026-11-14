@@ -1,9 +1,9 @@
 /**
  * @file RoleSideDrawer.tsx
  * @description The one side menu used by every screen (hamburger icon).
- *  - manager: Account Information, Stock Alert, Manage Price, Live Stock Count,
+ *  - manager: Homepage, Account Information, Stock Alert, Manage Price,
  *             Record Waste, Waste History + Log out
- *  - cashier: Dark-mode switch, Account Information + Log out
+ *  - cashier: Homepage, Point-of-Sale, Transaction History, Account Information + Log out
  *
  * Usage:
  *   const [menuVisible, setMenuVisible] = useState(false);
@@ -24,44 +24,46 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { usePathname, useRouter, type Href } from 'expo-router';
 import { clearToken } from '@/services/authService';
 import {
-  getDarkMode,
   getUserRole,
-  setGlobalDarkMode,
   subscribeAppTheme,
   type UserRole,
 } from '@/store/appState';
-import { ROUTES } from '@/constants/routes';
+import { ROUTES, homeRouteFor } from '@/constants/routes';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   /** Defaults to the logged-in user's role. */
   role?: UserRole;
-  /** Cashier dark mode — defaults to the global setting. */
-  darkMode?: boolean;
-  onToggleDarkMode?: () => void;
 };
 
 const COLORS = {
   red: '#EC0000',
-  managerCream: '#FDF8EA',
-  cashierCream: '#FDE8AA',
+  drawer: '#FFECA8', // same yellow for both roles (design)
   modalCream: '#FDFBF0',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
-  darkDrawer: '#22242E',
-  darkSurface: '#181920',
 };
 
 type MenuItem = {
   label: string;
   route: Href;
   icon: (color: string) => React.ReactNode;
+  /** Go back to this screen if it's already open further back, instead of stacking a new one. */
+  home?: boolean;
 };
 
 const ICON_SIZE = 44;
 
+const homeItem = (route: Href): MenuItem => ({
+  label: 'Homepage',
+  route,
+  home: true,
+  icon: (c) => <Ionicons name="home-outline" size={ICON_SIZE} color={c} />,
+});
+
 const MANAGER_MENU: MenuItem[] = [
+  homeItem(ROUTES.MANAGER_HOME),
   {
     label: 'Account Information',
     route: ROUTES.ACCOUNT_INFO,
@@ -78,11 +80,6 @@ const MANAGER_MENU: MenuItem[] = [
     icon: (c) => <Ionicons name="pricetag" size={ICON_SIZE - 2} color={c} />,
   },
   {
-    label: 'Live Stock Count',
-    route: ROUTES.STOCKS,
-    icon: (c) => <Ionicons name="eye-outline" size={ICON_SIZE + 2} color={c} />,
-  },
-  {
     label: 'Record Waste',
     route: ROUTES.RECORD_WASTE,
     icon: (c) => <Ionicons name="document-text-outline" size={ICON_SIZE} color={c} />,
@@ -94,12 +91,29 @@ const MANAGER_MENU: MenuItem[] = [
   },
 ];
 
+const CASHIER_MENU: MenuItem[] = [
+  homeItem(ROUTES.CASHIER_HOME),
+  {
+    label: 'Point-of-Sale',
+    route: ROUTES.POS,
+    icon: (c) => <MaterialCommunityIcons name="cash-register" size={ICON_SIZE - 2} color={c} />,
+  },
+  {
+    label: 'Transaction History',
+    route: ROUTES.TRANSACTION_HISTORY,
+    icon: (c) => <Ionicons name="document-text-outline" size={ICON_SIZE} color={c} />,
+  },
+  {
+    label: 'Account Information',
+    route: ROUTES.CASHIER_ACCOUNT,
+    icon: (c) => <Ionicons name="person-outline" size={ICON_SIZE} color={c} />,
+  },
+];
+
 export default function RoleSideDrawer({
   visible,
   onClose,
   role: roleProp,
-  darkMode: darkModeProp,
-  onToggleDarkMode,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -107,21 +121,16 @@ export default function RoleSideDrawer({
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.81, 360);
 
-  // Fall back to the global store when a screen doesn't pass role / dark mode.
+  // Fall back to the global store when a screen doesn't pass a role.
   const storeRole = useSyncExternalStore(subscribeAppTheme, getUserRole, getUserRole);
-  const storeDark = useSyncExternalStore(subscribeAppTheme, getDarkMode, getDarkMode);
   const role = roleProp ?? storeRole;
-  const darkMode = darkModeProp ?? storeDark;
-  const toggleDarkMode = onToggleDarkMode ?? (() => setGlobalDarkMode(!darkMode));
 
   // useState keeps one Animated.Value for the component's life (reading a
   // ref's .current during render is not allowed with the React Compiler).
   const [slideAnim] = useState(() => new Animated.Value(DRAWER_WIDTH));
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
-  const isCashier = role === 'cashier';
-  const isCashierDark = isCashier && darkMode;
-  const textColor = { color: isCashierDark ? COLORS.white : COLORS.nearBlack };
+  const menu = role === 'cashier' ? CASHIER_MENU : MANAGER_MENU;
 
   useEffect(() => {
     if (visible) {
@@ -142,11 +151,13 @@ export default function RoleSideDrawer({
     });
   };
 
-  const navigateTo = (route: Href) => {
+  const navigateTo = (item: MenuItem) => {
     slideOut(() => {
       // Already on this screen -> just close the menu.
-      if (typeof route === 'string' && pathname === route) return;
-      router.push(route);
+      if (typeof item.route === 'string' && pathname === item.route) return;
+      // Homepage goes back to the home screen rather than stacking another copy.
+      if (item.home) router.dismissTo(homeRouteFor(role));
+      else router.push(item.route);
     });
   };
 
@@ -170,11 +181,7 @@ export default function RoleSideDrawer({
                 paddingTop: insets.top + 22,
                 paddingBottom: insets.bottom + 24,
                 transform: [{ translateX: slideAnim }],
-                backgroundColor: isCashierDark
-                  ? COLORS.darkDrawer
-                  : isCashier
-                    ? COLORS.cashierCream
-                    : COLORS.managerCream,
+                backgroundColor: COLORS.drawer,
               },
             ]}
           >
@@ -185,64 +192,22 @@ export default function RoleSideDrawer({
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityLabel="Close menu"
             >
-              <Ionicons
-                name="close-outline"
-                size={44}
-                color={isCashierDark ? COLORS.white : COLORS.nearBlack}
-              />
+              <Ionicons name="close-outline" size={44} color={COLORS.nearBlack} />
             </TouchableOpacity>
 
-            {isCashier ? (
-              /* ── CASHIER MENU ── */
-              <View
-                style={[styles.cashierList, isCashierDark && { backgroundColor: COLORS.darkSurface }]}
-              >
+            <View style={styles.menuList}>
+              {menu.map((item) => (
                 <TouchableOpacity
-                  style={[
-                    styles.cashierRow,
-                    styles.cashierRowBorder,
-                    isCashierDark && { borderBottomColor: '#2E3240' },
-                  ]}
-                  onPress={toggleDarkMode}
+                  key={item.label}
+                  style={styles.menuRow}
+                  onPress={() => navigateTo(item)}
+                  accessibilityRole="button"
                 >
-                  <View style={styles.iconCol}>
-                    <MaterialCommunityIcons
-                      name={darkMode ? 'toggle-switch' : 'toggle-switch-off-outline'}
-                      size={44}
-                      color={COLORS.red}
-                    />
-                  </View>
-                  <Text style={[styles.itemText, textColor]}>
-                    {darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                  </Text>
+                  <View style={styles.iconCol}>{item.icon(COLORS.red)}</View>
+                  <Text style={styles.itemText}>{item.label}</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.cashierRow}
-                  onPress={() => navigateTo(ROUTES.CASHIER_ACCOUNT)}
-                >
-                  <View style={styles.iconCol}>
-                    <Ionicons name="person-outline" size={42} color={COLORS.red} />
-                  </View>
-                  <Text style={[styles.itemText, textColor]}>Account Information</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              /* ── MANAGER MENU ── */
-              <View style={styles.managerList}>
-                {MANAGER_MENU.map((item) => (
-                  <TouchableOpacity
-                    key={item.label}
-                    style={styles.managerRow}
-                    onPress={() => navigateTo(item.route)}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.iconCol}>{item.icon(COLORS.red)}</View>
-                    <Text style={styles.itemText}>{item.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+              ))}
+            </View>
 
             {/* Log out */}
             <TouchableOpacity
@@ -264,7 +229,7 @@ export default function RoleSideDrawer({
         onRequestClose={() => setLogoutModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, isCashierDark && { backgroundColor: COLORS.darkDrawer }]}>
+          <View style={styles.modalCard}>
             <View style={styles.modalIconCircle}>
               <MaterialCommunityIcons name="logout" size={46} color={COLORS.red} />
             </View>
@@ -309,11 +274,11 @@ const styles = StyleSheet.create({
     marginRight: 14,
     marginBottom: 26,
   },
-  managerList: {
+  menuList: {
     paddingLeft: 14,
     paddingRight: 16,
   },
-  managerRow: {
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     height: 60,
@@ -330,20 +295,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
     fontSize: 14,
     color: COLORS.nearBlack,
-  },
-  cashierList: {
-    backgroundColor: '#FFFDF9',
-    width: '100%',
-  },
-  cashierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-  },
-  cashierRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3EFE6',
   },
   logoutBtn: {
     alignSelf: 'center',
@@ -431,3 +382,6 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
   },
 });
+
+// TEST: cashier menu = Homepage, Point-of-Sale, Transaction History, Account Information; manager has no Live Stock Count
+// TEST: Homepage on a deep screen returns to the home screen (dismissTo), on the home screen it just closes

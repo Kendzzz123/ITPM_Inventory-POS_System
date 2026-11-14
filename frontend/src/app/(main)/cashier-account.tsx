@@ -1,5 +1,5 @@
 // cashier-account.tsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -22,7 +22,6 @@ import {
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { showAlert } from '@/utils/alert';
 import { getToken, clearToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, subscribeAppTheme } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 
 
@@ -32,7 +31,6 @@ const COLORS = {
   cream: '#FFFDF5',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
-  darkBg: '#181920',
 };
 
 export default function CashierAccountScreen() {
@@ -47,20 +45,14 @@ export default function CashierAccountScreen() {
   const [account, setAccount] = useState({
     name: '',
     phone: '',
+    email: '',
     formattedDate: '',
   });
   const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(getDarkMode());
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const iconColor = darkMode ? COLORS.white : COLORS.nearBlack;
+  const iconColor = COLORS.nearBlack;
   const textColor = { color: iconColor };
-
-  useEffect(() => {
-    return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
-    });
-  }, []);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -73,6 +65,7 @@ export default function CashierAccountScreen() {
         setAccount({
           name: acc.name ?? '',
           phone: acc.phone ?? '',
+          email: acc.email ?? '',
           formattedDate: acc.formattedDate ?? '',
         });
       }
@@ -98,7 +91,7 @@ export default function CashierAccountScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={[styles.center, darkMode && { backgroundColor: COLORS.darkBg }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
@@ -106,10 +99,10 @@ export default function CashierAccountScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, darkMode && { backgroundColor: COLORS.darkBg }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
           {/* Top Bar */}
@@ -140,7 +133,7 @@ export default function CashierAccountScreen() {
           ) : (
             <View style={styles.infoList}>
               {/* Name */}
-              <View style={[styles.infoRow, styles.rowDivider]}>
+              <View style={[styles.infoRow, ]}>
                 <View style={styles.iconCol}>
                   <Ionicons name="person-outline" size={44} color={iconColor} />
                 </View>
@@ -151,16 +144,28 @@ export default function CashierAccountScreen() {
               </View>
 
               {/* Contact Number */}
-              <View style={[styles.infoRow, styles.rowDivider]}>
+              <View style={[styles.infoRow ]}>
                 <View style={styles.iconCol}>
                   <Feather name="phone-call" size={38} color={iconColor} />
                 </View>
                 <View style={styles.textCol}>
                   <Text style={[styles.infoLabel, textColor]}>Contact Number</Text>
                   <Text style={[styles.infoValue, textColor]}>{account.phone}</Text>
+                  
                 </View>
+                
               </View>
-
+                <View style={[styles.infoRow]}>
+                <View style={styles.iconCol}>
+                  <Ionicons name="mail" size={40} color={COLORS.nearBlack} />
+                </View>
+                <View style={styles.textCol}>
+                  <Text style={[styles.infoLabel, textColor]}>Email</Text>
+                  <Text style={[styles.infoValue, textColor]}>{account.email}</Text>
+                  
+                </View>
+                
+              </View>
               {/* Employment Date */}
               <View style={styles.infoRow}>
                 <View style={styles.iconCol}>
@@ -195,8 +200,6 @@ export default function CashierAccountScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role="cashier"
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );
@@ -259,10 +262,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 18,
   },
-  rowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#9CA3AF',
-  },
+  
   iconCol: {
     width: 56,
     alignItems: 'center',

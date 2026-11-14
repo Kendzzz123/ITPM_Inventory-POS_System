@@ -24,7 +24,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { api, API_ROUTES, getKnownApiUrl } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
-import { getDarkMode, setGlobalDarkMode, getUserRole, subscribeAppTheme } from '@/store/appState';
+import { getUserRole, subscribeAppTheme, takeSaleCompleted } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { imageFor } from '@/constants/images';
 
@@ -35,8 +35,6 @@ const COLORS = {
   cream: '#FFFDF5',
   white: '#FFFFFF',
   nearBlack: '#0F1015',
-  darkBg: '#181920',
-  darkCard: '#22242E',
 };
 
 /** How much of one stock item ONE order uses (from Recipe_Portions). */
@@ -77,14 +75,11 @@ export default function PosScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
-  const [darkMode, setDarkMode] = useState(getDarkMode());
 
-  const isCashierDark = role === 'cashier' && darkMode;
-  const textColor = { color: isCashierDark ? COLORS.white : COLORS.nearBlack };
+  const textColor = { color: COLORS.nearBlack };
 
   useEffect(() => {
     return subscribeAppTheme(() => {
-      setDarkMode(getDarkMode());
       setRole(getUserRole());
     });
   }, []);
@@ -129,8 +124,10 @@ export default function PosScreen() {
   }, [router]);
 
   // Refresh menu + stock every time the POS is opened (stock changes after each sale).
+  // After a saved sale the cart starts empty, so the same order can't be charged twice.
   useFocusEffect(
     useCallback(() => {
+      if (takeSaleCompleted()) setCart([]);
       loadMenu();
     }, [loadMenu])
   );
@@ -217,7 +214,7 @@ export default function PosScreen() {
 
   if (!fontsLoaded) {
     return (
-      <View style={[styles.center, isCashierDark && { backgroundColor: COLORS.darkBg }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
@@ -225,10 +222,10 @@ export default function PosScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, isCashierDark && { backgroundColor: COLORS.darkBg }]}
+      style={styles.safeArea}
       edges={['top', 'bottom']}
     >
-      <StatusBar barStyle={isCashierDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
@@ -241,7 +238,7 @@ export default function PosScreen() {
               <Ionicons
                 name="chevron-back"
                 size={30}
-                color={isCashierDark ? COLORS.white : COLORS.nearBlack}
+                color={COLORS.nearBlack}
               />
             </TouchableOpacity>
             <TouchableOpacity
@@ -251,7 +248,7 @@ export default function PosScreen() {
               <Ionicons
                 name="menu"
                 size={32}
-                color={isCashierDark ? COLORS.white : COLORS.nearBlack}
+                color={COLORS.nearBlack}
               />
             </TouchableOpacity>
           </View>
@@ -289,7 +286,6 @@ export default function PosScreen() {
                   style={[
                     styles.menuCard,
                     isLastCentered && styles.centeredCard,
-                    isCashierDark && { backgroundColor: COLORS.darkCard, borderColor: '#374151' },
                     soldOut && styles.soldOutCard,
                   ]}
                   activeOpacity={0.85}
@@ -328,14 +324,11 @@ export default function PosScreen() {
 
           {/* Order Lines */}
           <View
-            style={[
-              styles.orderListCard,
-              isCashierDark && { backgroundColor: COLORS.darkCard },
-            ]}
+            style={styles.orderListCard}
           >
             {cart.length === 0 ? (
               <View style={styles.emptyOrderBox}>
-                <Text style={[styles.emptyOrderText, isCashierDark && { color: '#9CA3AF' }]}>
+                <Text style={styles.emptyOrderText}>
                   Tap any menu item above to add to order.
                 </Text>
               </View>
@@ -346,7 +339,6 @@ export default function PosScreen() {
                   style={[
                     styles.orderRow,
                     idx !== cart.length - 1 && styles.orderRowBorder,
-                    isCashierDark && { borderBottomColor: '#2E3240' },
                   ]}
                 >
                   <Text style={[styles.orderItemName, textColor]} numberOfLines={2}>
@@ -403,8 +395,6 @@ export default function PosScreen() {
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
         role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setGlobalDarkMode(!darkMode)}
       />
     </SafeAreaView>
   );

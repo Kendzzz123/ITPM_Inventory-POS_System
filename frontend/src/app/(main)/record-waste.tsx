@@ -1,12 +1,15 @@
 /**
  * @file record-waste.tsx
- * @description Manager screen: record wasted stock (date, item, quantity).
- * Items come from the Stock_Items table; saving calls POST /protected/waste.
+ * @description Manager screen: record wasted stock for several items at once.
+ * Enter the date (optional, defaults to today), pick items, set each quantity,
+ * then Confirm. Each item is saved with POST /protected/waste and its own
+ * request id, so a retry can never log the same waste twice. If one item
+ * fails (for example more than is in stock), the others stay saved and only
+ * the failed ones stay picked so they can be fixed.
  */
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Keyboard,
   Modal,
   ScrollView,
   StatusBar,
@@ -14,19 +17,21 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { FontAwesome, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
+import ItemQuantityPicker, { type PickedQuantities } from '@/components/ItemQuantityPicker';
 import { showAlert } from '@/utils/alert';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { useStockItems } from '@/hooks/useStockItems';
 import { getToken, clearToken } from '@/services/authService';
 import { todaySlashDate, newRequestId } from '@/constants/app';
 import { ROUTES } from '@/constants/routes';
+import { formatDateInput, isValidPastDate } from '@/utils/dates';
+import { formatNumber } from '@/utils/stock';
 
 const COLORS = {
   yellow: '#FFC400',
@@ -37,58 +42,36 @@ const COLORS = {
   nearBlack: '#0F1015',
 };
 
-/** Formats typed digits as mm/dd/yyyy (e.g. "1027" -> "10/27"). */
-const formatDateInput = (text: string): string => {
-  const digits = text.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-
-/** True for a real calendar date in mm/dd/yyyy that is not in the future. */
-const isValidPastDate = (value: string): boolean => {
-  const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return false;
-  const [mm, dd, yyyy] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const d = new Date(yyyy, mm - 1, dd);
-  if (d.getFullYear() !== yyyy || d.getMonth() !== mm - 1 || d.getDate() !== dd) return false;
-  return d.getTime() <= Date.now();
-};
-
 export default function RecordWasteScreen() {
   const router = useRouter();
-  const { stockNames, stockIdFor, loadingStocks } = useStockItems();
+  const { stockItems, loadingStocks, reload } = useStockItems();
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [dateStr, setDateStr] = useState('');
-  const [selectedItem, setSelectedItem] = useState('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [quantity, setQuantity] = useState('');
+  const [picked, setPicked] = useState<PickedQuantities>({});
+  // One request id per picked item, kept until that item is saved (safe retries).
+  const [requestIds, setRequestIds] = useState<Record<number, string>>({});
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // One id per entry so a double tap can't log the same waste twice.
-  const [requestId, setRequestId] = useState(newRequestId);
 
-  const resetForm = () => {
-    setDateStr('');
-    setSelectedItem('');
-    setQuantity('');
-    setRequestId(newRequestId());
-  };
+  const pickedIds = Object.keys(picked).map(Number);
+  const stockOf = (id: number) => stockItems.find((s) => s.id === id);
+  const nameOf = (id: number) => stockOf(id)?.name ?? 'Item';
 
   const handleOpenConfirm = () => {
-    
-    setDropdownOpen(false);
     if (dateStr && !isValidPastDate(dateStr)) {
       showAlert('Invalid Date', 'Please enter a valid date (mm/dd/yyyy) that is not in the future.');
       return;
     }
-    if (!selectedItem) {
-      showAlert('Select Item', 'Please select an item to record as waste.');
+    const missing = pickedIds.filter((id) => !(Number(picked[id]) > 0));
+    if (missing.length > 0) {
+      showAlert('Invalid Quantity', `Enter a quantity greater than 0 for ${missing.map(nameOf).join(', ')}.`);
       return;
     }
-    if (!quantity || !(Number(quantity) > 0)) {
-      showAlert('Invalid Quantity', 'Please enter a quantity greater than 0.');
+    const tooMuch = pickedIds.filter((id) => Number(picked[id]) > (stockOf(id)?.quantity ?? Infinity));
+    if (tooMuch.length > 0) {
+      const lines = tooMuch.map((id) => `${nameOf(id)}: only ${formatNumber(stockOf(id)?.quantity ?? 0)} in stock`);
+      showAlert('Not Enough Stock', `You can't waste more than you have.\n${lines.join('\n')}`);
       return;
     }
     setConfirmVisible(true);
@@ -96,173 +79,138 @@ export default function RecordWasteScreen() {
 
   const handleConfirmWaste = async () => {
     setSubmitting(true);
-    try {
-      const token = await getToken();
-      if (!token) {
-        router.replace(ROUTES.LOGIN);
-        return;
+    const token = await getToken();
+    if (!token) {
+      setSubmitting(false);
+      router.replace(ROUTES.LOGIN);
+      return;
+    }
+
+    const ids = { ...requestIds };
+    for (const id of pickedIds) ids[id] = ids[id] || newRequestId();
+    setRequestIds(ids);
+
+    const reason = `Waste recorded on ${dateStr || todaySlashDate()}`;
+    const saved: number[] = [];
+    const failed: string[] = [];
+    for (const id of pickedIds) {
+      try {
+        await api.post(
+          API_ROUTES.WASTE,
+          {
+            stockId: id,
+            quantity: Number(picked[id]),
+            reason,
+            clientRequestId: ids[id],
+            wasteDate: dateStr || undefined, // the day picked above (empty = today)
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        saved.push(id);
+      } catch (err: any) {
+        if (err.response?.status === 401) {
+          setSubmitting(false);
+          setConfirmVisible(false);
+          await clearToken();
+          router.replace(ROUTES.LOGIN);
+          return;
+        }
+        failed.push(`${nameOf(id)}: ${err.response?.data?.message || 'could not be recorded'}`);
       }
-      await api.post(
-        API_ROUTES.WASTE,
-        {
-          stockId: stockIdFor(selectedItem),
-          itemName: selectedItem,
-          quantity: Number(quantity),
-          reason: `Waste recorded on ${dateStr || todaySlashDate()}`,
-          clientRequestId: requestId,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setConfirmVisible(false);
-      resetForm();
-      showAlert('Recorded', 'Waste has been logged.', [
+    }
+
+    // Saved items leave the list; failed ones stay picked (with their request ids).
+    const nextPicked = { ...picked };
+    const nextIds = { ...ids };
+    for (const id of saved) {
+      delete nextPicked[id];
+      delete nextIds[id];
+    }
+    setPicked(nextPicked);
+    setRequestIds(nextIds);
+    setSubmitting(false);
+    setConfirmVisible(false);
+    reload();
+
+    if (failed.length === 0) {
+      setDateStr('');
+      showAlert('Recorded', `Waste logged for ${saved.length} ${saved.length === 1 ? 'item' : 'items'}.`, [
         { text: 'View History', onPress: () => router.push(ROUTES.WASTE_HISTORY) },
       ]);
-    } catch (err: any) {
-      setConfirmVisible(false);
-      if (err.response?.status === 401) {
-        await clearToken();
-        router.replace(ROUTES.LOGIN);
-        return;
-      }
-      showAlert('Error', err.response?.data?.message || 'Failed to record waste.');
-    } finally {
-      setSubmitting(false);
+    } else if (saved.length > 0) {
+      showAlert(
+        'Partly Recorded',
+        `Saved: ${saved.map(nameOf).join(', ')}.\nNot saved:\n${failed.join('\n')}`
+      );
+    } else {
+      showAlert('Error', failed.join('\n'));
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
-      <TouchableWithoutFeedback
-        onPress={() => {
-          
-          setDropdownOpen(false);
-        }}
-        accessible={false}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.container}>
-            {/* Top Bar */}
-            <View style={styles.topBar}>
-              <TouchableOpacity
-                onPress={() => router.back()}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityLabel="Go back"
-              >
-                <Ionicons name="chevron-back" size={36} color={COLORS.nearBlack} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setMenuVisible(true)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityLabel="Open menu"
-              >
-                <Ionicons name="menu" size={40} color={COLORS.nearBlack} />
-              </TouchableOpacity>
-            </View>
+        <View style={styles.container}>
+          {/* Top Bar */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={30} color={COLORS.nearBlack} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Open menu"
+            >
+              <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
+            </TouchableOpacity>
+          </View>
 
-            <Text style={styles.pageTitle}>Record Waste</Text>
+          <Text style={styles.pageTitle}>Record Waste</Text>
 
-            {/* Date */}
-            <Text style={styles.label}>Date</Text>
-            <View style={styles.dateBox}>
-              <TextInput
-                style={styles.dateInput}
-                value={dateStr}
-                onChangeText={(t) => setDateStr(formatDateInput(t))}
-                placeholder="mm/dd/yyyy"
-                placeholderTextColor={COLORS.nearBlack}
-                keyboardType="number-pad"
-                maxLength={10}
-                onFocus={() => setDropdownOpen(false)}
-              />
-              <TouchableOpacity
-                onPress={() => setDateStr(todaySlashDate())}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Use today's date"
-              >
-                <MaterialCommunityIcons name="calendar-month-outline" size={34} color={COLORS.red} />
-              </TouchableOpacity>
-            </View>
+          {/* Date */}
+          <Text style={styles.label}>Date</Text>
+          <View style={styles.dateBox}>
+            <TextInput
+              style={styles.dateInput}
+              value={dateStr}
+              onChangeText={(t) => setDateStr(formatDateInput(t))}
+              placeholder="mm/dd/yyyy"
+              placeholderTextColor={COLORS.nearBlack}
+              keyboardType="number-pad"
+              maxLength={10}
+            />
+            <TouchableOpacity
+              onPress={() => setDateStr(todaySlashDate())}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Use today's date"
+            >
+              <MaterialCommunityIcons name="calendar-month-outline" size={30} color={COLORS.red} />
+            </TouchableOpacity>
+          </View>
 
-            {/* Item + Quantity */}
-            <View style={styles.row}>
-              <View style={styles.itemCol}>
-                <Text style={styles.label}>Item</Text>
-                <TouchableOpacity
-                  style={styles.selectBox}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                   
-                    setDropdownOpen((open) => !open);
-                  }}
-                >
-                  <Text style={styles.selectText} numberOfLines={1}>
-                    {selectedItem || 'Select'}
-                  </Text>
-                  <FontAwesome
-                    name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={COLORS.red}
-                  />
-                </TouchableOpacity>
+          <ItemQuantityPicker
+            items={stockItems}
+            picked={picked}
+            onChange={setPicked}
+            loading={loadingStocks}
+          />
 
-                {dropdownOpen && (
-                  <View style={styles.dropdownMenu}>
-                    {loadingStocks ? (
-                      <ActivityIndicator color={COLORS.red} style={{ paddingVertical: 12 }} />
-                    ) : stockNames.length === 0 ? (
-                      <Text style={styles.dropdownEmpty}>No stock items found.</Text>
-                    ) : (
-                      stockNames.map((item) => (
-                        <TouchableOpacity
-                          key={item}
-                          style={styles.dropdownOption}
-                          onPress={() => {
-                            setSelectedItem(item);
-                            setDropdownOpen(false);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownOptionText,
-                              item === selectedItem && styles.dropdownOptionSelected,
-                            ]}
-                          >
-                            {item}
-                          </Text>
-                        </TouchableOpacity>
-                      ))
-                    )}
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.qtyCol}>
-                <Text style={styles.label}>Quantity</Text>
-                <View style={styles.qtyBox}>
-                  <TextInput
-                    style={styles.qtyInput}
-                    value={quantity}
-                    onChangeText={(t) => setQuantity(t.replace(/[^0-9.]/g, ''))}
-                    keyboardType="decimal-pad"
-                    onFocus={() => setDropdownOpen(false)}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Confirm */}
+          {pickedIds.length > 0 && (
             <TouchableOpacity style={styles.submitBtn} activeOpacity={0.85} onPress={handleOpenConfirm}>
               <Text style={styles.submitBtnText}>Confirm</Text>
             </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
+          )}
+        </View>
+      </ScrollView>
 
       {/* Confirmation Modal */}
       <Modal
@@ -278,7 +226,7 @@ export default function RecordWasteScreen() {
             </View>
 
             <Text style={styles.modalPrompt}>
-              Are you sure you want to{'\n'}throw this item?
+              Are you sure you want to{'\n'}throw {pickedIds.length === 1 ? 'this item' : `these ${pickedIds.length} items`}?
             </Text>
 
             <View style={styles.modalBtnRow}>
@@ -290,11 +238,7 @@ export default function RecordWasteScreen() {
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleConfirmWaste}
-                disabled={submitting}
-              >
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmWaste} disabled={submitting}>
                 {submitting ? (
                   <ActivityIndicator size="small" color={COLORS.white} />
                 ) : (
@@ -338,24 +282,23 @@ const styles = StyleSheet.create({
     fontSize: 26,
     color: COLORS.nearBlack,
     textAlign: 'center',
-    marginTop: 46,
-    marginBottom: 52,
+    marginTop: 30,
+    marginBottom: 32,
   },
   label: {
     fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
+    fontSize: 11.5,
     color: COLORS.nearBlack,
-    marginLeft: 4,
     marginBottom: 8,
   },
   dateBox: {
-    height: 50,
+    height: 46,
     backgroundColor: COLORS.white,
     borderWidth: 2,
     borderColor: COLORS.yellow,
-    borderRadius: 18,
+    borderRadius: 14,
     paddingLeft: 14,
-    paddingRight: 16,
+    paddingRight: 12,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 26,
@@ -364,100 +307,19 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
-    color: COLORS.nearBlack,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 14,
-    zIndex: 20,
-  },
-  itemCol: {
-    flex: 1.6,
-    zIndex: 20,
-  },
-  qtyCol: {
-    flex: 1,
-  },
-  selectBox: {
-    height: 50,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.yellow,
-    borderRadius: 12,
-    paddingLeft: 12,
-    paddingRight: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectText: {
-    flex: 1,
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
-    color: COLORS.nearBlack,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 72,
-    left: 2,
-    right: 2,
-    backgroundColor: COLORS.white,
-    paddingVertical: 6,
-    zIndex: 30,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  dropdownOption: {
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-  },
-  dropdownOptionText: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11.5,
-    color: COLORS.nearBlack,
-  },
-  dropdownOptionSelected: {
-    fontFamily: 'Poppins_700Bold',
-    color: COLORS.red,
-  },
-  dropdownEmpty: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11.5,
-    color: COLORS.nearBlack,
-    padding: 12,
-  },
-  qtyBox: {
-    height: 50,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.yellow,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  qtyInput: {
-    width: '100%',
-    height: '100%',
-    textAlign: 'center',
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.nearBlack,
   },
   submitBtn: {
-    marginTop: 48,
+    marginTop: 36,
     alignSelf: 'center',
-    width: '50%',
+    width: '55%',
     minWidth: 170,
     height: 44,
     backgroundColor: COLORS.red,
-    borderRadius: 16,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
   },
   submitBtnText: {
     fontFamily: 'Poppins_700Bold',
@@ -534,3 +396,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+// TEST: two picked items -> two POST /waste calls, each with its own clientRequestId
+// TEST: one item over its stock -> "Not Enough Stock" before anything is sent
+// TEST: a failed item stays picked with the same request id; saved items leave the list
