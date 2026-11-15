@@ -225,13 +225,16 @@ export default function DashboardScreen() {
           />
         }
       >
-        <View style={styles.container}>
-        <TouchableOpacity
-                onPress={() => setMenuVisible(true)}
-                hitSlop={{ top: 20, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="menu" size={32} color={COLORS.nearBlack} />
-              </TouchableOpacity>
+        {/* Top hamburger: right edge of the same column as the content below */}
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            onPress={() => setMenuVisible(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+          >
+            <Ionicons name="menu" size={34} color={COLORS.nearBlack} />
+          </TouchableOpacity>
         </View>
         <View style={styles.card}>
           {/* Padded Top Section (Header + Sales Report) */}
@@ -430,10 +433,13 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  topRow: {
     width: '100%',
-    marginLeft: 600,
+    maxWidth: 480, // same column as the card, so the icon sits at its right edge
+    paddingHorizontal: 14,
+    alignItems: 'flex-end',
+    marginTop: Platform.OS === 'android' ? 8 : 0,
+    marginBottom: 8,
   },
   safeArea: {
     flex: 1,
