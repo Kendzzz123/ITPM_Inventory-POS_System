@@ -11,6 +11,7 @@ const app = require('./src/app');
 const pool = require('./src/config/db');
 const env = require('./src/config/env');
 const ensureSchema = require('./src/config/ensureSchema');
+const initDatabase = require('./src/config/initDatabase');
 
 const server = app.listen(env.PORT, '0.0.0.0', async () => {
   console.log(`Server listening on http://0.0.0.0:${env.PORT}`);
@@ -23,6 +24,8 @@ const server = app.listen(env.PORT, '0.0.0.0', async () => {
     return;
   }
   try {
+    // A brand-new (empty) database gets its tables and manager login first.
+    await initDatabase();
     await ensureSchema();
   } catch (err) {
     console.error('Could not update the database automatically:', err.message);

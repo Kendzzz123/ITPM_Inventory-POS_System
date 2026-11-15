@@ -24,6 +24,9 @@ const ordersRoutes = require('./routes/orders.routes');
 
 const app = express();
 
+// Behind a hosting proxy (TRUST_PROXY=1) req.ip is the phone's own IP, not the proxy's.
+if (env.TRUST_PROXY) app.set('trust proxy', env.TRUST_PROXY);
+
 // Hide the Express fingerprint and set hardening headers.
 app.disable('x-powered-by');
 app.use(securityHeaders);

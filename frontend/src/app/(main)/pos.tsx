@@ -27,6 +27,7 @@ import { getToken } from '@/services/authService';
 import { getUserRole, subscribeAppTheme, takeSaleCompleted } from '@/store/appState';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { imageFor } from '@/constants/images';
+import type { ImageSourcePropType } from 'react-native';
 
 
 const COLORS = {
@@ -50,7 +51,7 @@ type PosMenuItem = {
   id: number;
   name: string;
   price: number;
-  image: string;
+  image: ImageSourcePropType;
   portions: Portion[];
 };
 
@@ -292,7 +293,7 @@ export default function PosScreen() {
                   onPress={() => addToCart(item)}
                 >
                   <View style={styles.cardImgBox}>
-                    <Image source={{ uri: item.image }} style={styles.cardImg} resizeMode="contain" />
+                    <Image source={item.image} style={styles.cardImg} resizeMode="contain" />
                     {left !== null && (
                       <View style={[styles.leftBadge, soldOut && styles.leftBadgeSoldOut]}>
                         <Text style={[styles.leftBadgeText, soldOut && styles.leftBadgeTextSoldOut]}>

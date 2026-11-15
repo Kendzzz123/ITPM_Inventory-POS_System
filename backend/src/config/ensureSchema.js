@@ -10,6 +10,7 @@
 
 const pool = require('./db');
 const { MENU_ITEMS, STOCK_ITEMS, DEFAULT_PORTIONS } = require('./catalog');
+const { schemaStatement } = require('../utils/sqlFile');
 
 /** Adds a column only if it is missing. */
 async function addColumnIfMissing(table, column, definition) {
@@ -172,6 +173,16 @@ const MIGRATIONS = [
            CALL sp_record_waste_on(p_user, p_req, p_stock, p_qty, p_reason, NULL, o_waste_id);
          END`
       );
+    },
+  },
+  {
+    id: '006_order_temp_table_primary_key',
+    description: 'Saving an order works on online MySQL too (sp_create_order temp table has a primary key)',
+    run: async () => {
+      // The exact procedure from database/pos_schema.sql, so the two never differ.
+      const createOrder = schemaStatement(/^CREATE\s+PROCEDURE\s+sp_create_order\b/i);
+      await pool.query('DROP PROCEDURE IF EXISTS sp_create_order');
+      await pool.query(createOrder);
     },
   },
 ];

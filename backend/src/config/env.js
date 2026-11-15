@@ -30,6 +30,27 @@ const env = {
   DB_PASSWORD: read('DB_PASSWORD', ''),
   DB_NAME: read('DB_NAME', 'myapp_db'),
 
+  /** Online databases (Aiven, ...) need an encrypted connection: DB_SSL=true. */
+  DB_SSL: ['1', 'true', 'yes'].includes(String(read('DB_SSL', '')).toLowerCase()),
+  /**
+   * The database's CA certificate, to check it is really your server. Paste the
+   * PEM text (line breaks may become spaces, that's fine) or give a file path.
+   */
+  DB_SSL_CA: read('DB_SSL_CA'),
+  DB_SSL_CA_FILE: read('DB_SSL_CA_FILE'),
+  /**
+   * Time zone for MySQL dates (NOW(), CURDATE(), "Today" filters), e.g. +08:00.
+   * Leave empty on the shop PC (MySQL already uses PH time); set it online,
+   * where servers run on UTC. Also set TZ=Asia/Manila there for Node.
+   */
+  DB_TIMEZONE: read('DB_TIMEZONE'),
+
+  /**
+   * Behind a hosting proxy (Render, ...) set TRUST_PROXY=1 so the login limits
+   * see each phone's own IP instead of the proxy's. Leave 0 on the shop Wi-Fi.
+   */
+  TRUST_PROXY: Number(read('TRUST_PROXY', '0')) || 0,
+
   JWT_SECRET: read('JWT_SECRET'),
   JWT_EXPIRES_IN: read('JWT_EXPIRES_IN', '1d'),
 
@@ -88,3 +109,4 @@ module.exports = env;
 // TEST: throws when JWT_SECRET is not set
 // TEST: DEFAULT_STAFF_PASSWORDS splits and trims comma separated values
 // TEST: CORS_ORIGINS parses a comma list and is [] when unset
+// TEST: DB_SSL=true -> true; unset -> false; TRUST_PROXY unset -> 0

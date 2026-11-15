@@ -18,6 +18,7 @@ import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { imageFor } from '@/constants/images';
+import type { ImageSourcePropType } from 'react-native';
 import { showAlert } from '@/utils/alert';
 
 
@@ -25,7 +26,7 @@ type MenuItem = {
   id: number;
   name: string;
   price: number;
-  image: string;
+  image: ImageSourcePropType;
 };
 
 export default function ManagePriceScreen() {
@@ -129,7 +130,7 @@ export default function ManagePriceScreen() {
                   >
                     <View style={styles.imageBox}>
                       <Image
-                        source={{ uri: item.image }}
+                        source={item.image}
                         style={styles.productImage}
                         resizeMode="contain"
                       />

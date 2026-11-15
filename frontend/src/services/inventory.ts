@@ -10,6 +10,7 @@
  *   that stock is low. Restocking it means restocking the stock it uses.
  */
 import { api, API_ROUTES } from '@/config/apiConfig';
+import type { ImageSourcePropType } from 'react-native';
 import { imageFor } from '@/constants/images';
 import { toStockLevel, type StockLevel } from '@/utils/stock';
 
@@ -27,7 +28,7 @@ export type InventoryCard = {
   usesStockOf: string | null;
   /** How much of that stock one order uses (0.5 for Half Juicy Chicken). */
   portion: number | null;
-  image: string;
+  image: ImageSourcePropType;
 };
 
 type MenuPortion = { stockId: number; stockName: string; quantityUsed: number };

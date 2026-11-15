@@ -179,7 +179,7 @@ export default function CashierDashboardScreen() {
               >
                 <View style={styles.imageArea}>
                   <Image
-                    source={{ uri: imageFor(item.name) }}
+                    source={imageFor(item.name)}
                     style={styles.stockImg}
                     resizeMode="contain"
                   />

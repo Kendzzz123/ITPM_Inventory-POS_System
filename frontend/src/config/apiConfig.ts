@@ -181,8 +181,12 @@ export const getKnownApiUrl = (): string | null => serverUrl;
 // Shared HTTP client: use `api` instead of `axios` everywhere
 // ---------------------------------------------------------------------------
 
-/** axios with the server address filled in: `api.get(API_ROUTES.STOCKS, { headers })`. */
-export const api = axios.create({ timeout: 20000 });
+/**
+ * axios with the server address filled in: `api.get(API_ROUTES.STOCKS, { headers })`.
+ * A free online server sleeps when unused and takes up to a minute to wake up,
+ * so with EXPO_PUBLIC_API_URL the first request is allowed to wait longer.
+ */
+export const api = axios.create({ timeout: ENV_API_URL ? 75000 : 20000 });
 
 api.interceptors.request.use(async (config) => {
   config.baseURL = await getApiUrl();
@@ -202,7 +206,7 @@ api.interceptors.response.use(undefined, async (error) => {
   return Promise.reject(error);
 });
 
-// TEST: EXPO_PUBLIC_API_URL set -> getApiUrl() returns it without any network check
+// TEST: EXPO_PUBLIC_API_URL set -> getApiUrl() returns it without any network check; timeout 75 s (server may be waking up)
 // TEST: dev host answers /health -> used and saved; nothing scanned
 // TEST: no dev host, nothing saved -> Wi-Fi search finds the PC answering /health on SERVER_PORT
 // TEST: saved server stops answering -> next request searches again and retries once

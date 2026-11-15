@@ -217,8 +217,10 @@ BEGIN
   UPDATE Orders SET Total_Amount=v_total WHERE Order_ID=o_order_id;
   SET o_change = p_received - v_total;
   INSERT INTO Payments(Order_ID, Amount_Received, Change_Amount) VALUES (o_order_id, p_received, o_change);
-  CREATE TEMPORARY TABLE tmp_need AS
-    SELECT rp.Stock_ID, SUM(od.Quantity*rp.Quantity_Used) AS Need
+  -- Primary key: online MySQL (sql_require_primary_key) refuses tables without one.
+  CREATE TEMPORARY TABLE tmp_need (Stock_ID INT UNSIGNED NOT NULL PRIMARY KEY, Need DECIMAL(14,3) NOT NULL);
+  INSERT INTO tmp_need (Stock_ID, Need)
+    SELECT rp.Stock_ID, SUM(od.Quantity*rp.Quantity_Used)
       FROM Order_Details od JOIN Recipe_Portions rp ON rp.Item_ID=od.Item_ID
      WHERE od.Order_ID=o_order_id GROUP BY rp.Stock_ID;
   SELECT s.Stock_ID FROM Stock_Items s JOIN tmp_need n ON n.Stock_ID=s.Stock_ID ORDER BY s.Stock_ID FOR UPDATE;  -- deterministic lock order

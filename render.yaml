@@ -1,0 +1,46 @@
+# Render Blueprint: the Mr. Liempo backend (Express API) on Render's free plan.
+# Render -> New -> Blueprint -> pick this GitHub repo. It asks for the values marked
+# "sync: false" (copy them from your Aiven MySQL service's Overview page).
+services:
+  - type: web
+    name: mr-liempo-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Asia/Manila
+      - key: DB_TIMEZONE
+        value: "+08:00"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: JWT_SECRET
+        generateValue: true
+      # --- Aiven MySQL (Overview page of the service) ---
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        value: avnadmin
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: defaultdb
+      - key: DB_SSL
+        value: "true"
+      - key: DB_SSL_CA
+        sync: false
+      # --- Gmail for "Forgot Password" codes (same as your backend/.env) ---
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false

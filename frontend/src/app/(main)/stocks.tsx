@@ -146,7 +146,7 @@ export default function StocksScreen() {
                   accessibilityLabel={`${item.name}: ${formatNumber(item.quantity)} left${item.isLow ? ', low stock' : ''}`}
                 >
                   <View style={styles.imageWrapper}>
-                    <Image source={{ uri: item.image }} style={styles.stockImage} resizeMode="contain" />
+                    <Image source={item.image} style={styles.stockImage} resizeMode="contain" />
                   </View>
                   <View style={styles.cardFooter}>
                     <Text style={styles.stockName} numberOfLines={2}>

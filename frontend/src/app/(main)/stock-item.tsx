@@ -115,7 +115,7 @@ export default function StockItemScreen() {
             <>
               <View style={styles.card}>
                 <View style={styles.imageWrapper}>
-                  <Image source={{ uri: card.image }} style={styles.image} resizeMode="contain" />
+                  <Image source={card.image} style={styles.image} resizeMode="contain" />
                 </View>
                 <View style={styles.footer}>
                   <Text style={styles.name} numberOfLines={2}>
