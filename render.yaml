@@ -44,3 +44,9 @@ services:
         sync: false
       - key: EMAIL_PASS
         sync: false
+      # Render's free plan blocks Gmail's mail ports: codes go through the Apps Script
+      # relay in backend/docs/email-relay.gs (add these two in the Environment tab).
+      - key: EMAIL_RELAY_URL
+        sync: false
+      - key: EMAIL_RELAY_SECRET
+        sync: false

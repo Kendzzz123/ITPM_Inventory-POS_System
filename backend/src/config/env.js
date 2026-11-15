@@ -56,6 +56,13 @@ const env = {
 
   EMAIL_USER: read('EMAIL_USER'),
   EMAIL_PASS: read('EMAIL_PASS'),
+  /**
+   * Online only: Render's free plan blocks Gmail's mail ports, so codes are sent
+   * through a small Google Apps Script web app on the shop Gmail instead
+   * (backend/docs/email-relay.gs). Leave both empty on the shop PC.
+   */
+  EMAIL_RELAY_URL: read('EMAIL_RELAY_URL'),
+  EMAIL_RELAY_SECRET: read('EMAIL_RELAY_SECRET'),
 
   /**
    * Passwords given to brand-new staff accounts. Logging in with one of these
