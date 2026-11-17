@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Secrets — never commit real credentials (use backend/.env.example as the template)
+.env
+.env.*
+!.env.example
+
+# Expo / build output
+.expo/
+dist/
+web-build/
+
+# Restructure leftovers (see cleanup-old-files.js)
+_to_delete/
+
+# OS / editor
+.DS_Store
+Thumbs.db

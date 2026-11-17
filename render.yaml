@@ -1,0 +1,76 @@
+# Render Blueprint for Mr. Liempo, both on Render's free plan:
+#  - mr-liempo-api: the backend (Express API)
+#  - mr-liempo:     the web version of the app (a link anyone can open in a browser)
+# Render -> New -> Blueprint -> pick this GitHub repo. It asks for the values marked
+# "sync: false" (copy them from your Aiven MySQL service's Overview page).
+# Adding a "sync: false" value to a Blueprint that already exists? Render skips it on
+# sync, so type it in that service's Environment tab instead.
+services:
+  - type: web
+    name: mr-liempo-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Asia/Manila
+      - key: DB_TIMEZONE
+        value: "+08:00"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: JWT_SECRET
+        generateValue: true
+      # --- Aiven MySQL (Overview page of the service) ---
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        value: avnadmin
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: defaultdb
+      - key: DB_SSL
+        value: "true"
+      - key: DB_SSL_CA
+        sync: false
+      # --- Gmail for "Forgot Password" codes (same as your backend/.env) ---
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      # Render's free plan blocks Gmail's mail ports: codes go through the Apps Script
+      # relay in backend/docs/email-relay.gs (add these two in the Environment tab).
+      - key: EMAIL_RELAY_URL
+        sync: false
+      - key: EMAIL_RELAY_SECRET
+        sync: false
+      # Websites allowed to call this API from a browser: the web version below.
+      # Its address, e.g. https://mr-liempo.onrender.com (comma separated if more than one).
+      - key: CORS_ORIGINS
+        sync: false
+
+  # The web version of the app. Static files only, so it's free and never sleeps.
+  # The API address is built into the files, so rebuild this after changing it.
+  - type: web
+    name: mr-liempo
+    runtime: static
+    buildCommand: cd frontend && npm ci && EXPO_PUBLIC_API_URL=https://mr-liempo-api.onrender.com npx expo export -p web
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+    routes:
+      # Opening or refreshing any page (e.g. /stocks) loads the app, which shows that page.
+      - type: rewrite
+        source: /*
+        destination: /index.html

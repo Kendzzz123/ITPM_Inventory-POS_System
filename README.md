@@ -1,0 +1,114 @@
+# Mr. Liempo — Inventory & POS System
+
+Expo (React Native) app + Express/MySQL API.
+
+```
+ITPM_Inventory-POS_System/
+├── backend/
+│   ├── server.js                 # entry point (npm start)
+│   ├── .env.example              # copy to .env and fill in
+│   ├── database/
+│   │   ├── pos_schema.sql        # tables, triggers, stored procedures
+│   │   ├── seed.js               # manager login, menu, stock items (npm run db:seed)
+│   │   ├── migrations/           # changes for databases created from an older schema
+│   │   └── migrate_legacy.sql    # one-time import from the old database (optional)
+│   └── src/
+│       ├── app.js                # express app + route mounting
+│       ├── config/               # env, MySQL pool, mailer
+│       ├── middleware/           # JWT auth, role checks, error handler
+│       ├── routes/               # auth, account, reports, inventory, menu, staff, orders
+│       └── utils/
+└── frontend/
+    └── src/
+        ├── app/
+        │   ├── _layout.tsx       # loads Poppins, stack navigator
+        │   ├── (auth)/           # login, forgot password, OTP, new/change password
+        │   └── (main)/           # manager + cashier screens
+        ├── components/           # RoleSideDrawer
+        ├── config/apiConfig.ts   # ← the ONLY place with the server IP / API URLs
+        ├── config/theme.ts       # brand colors & fonts
+        ├── constants/            # routes, images, app constants
+        ├── hooks/  services/  store/  utils/
+```
+
+## First-time setup
+
+**Database (MySQL 8)**
+
+```bash
+mysql -u root -p -e "CREATE DATABASE myapp_db"
+mysql -u root -p myapp_db < backend/database/pos_schema.sql
+```
+
+Already have a database from the old schema? Just run
+`backend/database/migrations/001_add_suspended_until.sql` instead.
+
+**Backend**
+
+```bash
+cd backend
+npm install
+copy .env.example .env      # then fill in DB_PASSWORD, JWT_SECRET, EMAIL_USER, EMAIL_PASS
+npm run db:seed             # creates the manager login, menu items and stock items
+npm start                   # http://localhost:3000/health should say "ok"
+```
+
+The seed prints the manager login. The first login asks you to change the password.
+
+**Frontend**
+
+```bash
+cd frontend
+npm install
+npx expo start
+```
+
+No IP address needs to be typed anywhere. The app finds the backend by itself
+(`frontend/src/config/apiConfig.ts`, the only file that knows the server address):
+the PC running the Expo dev server first, then the last server the phone used,
+then a search of the phone's Wi-Fi for the PC answering `/health` on port 3000.
+Keep the phone on the same Wi-Fi as the backend PC. For a hosted backend, set
+`EXPO_PUBLIC_API_URL` in `frontend/.env` instead.
+
+## Notes
+
+- Stock quantities start at 0 — use **Restock** to add stock before selling.
+- The stock items are the POS menu items (same names). Any other stock item (e.g. the
+  old Raw Chicken / Raw Pork) is hidden from Stocks, Restock, Record Waste and Waste
+  History; its past records stay in the database. Half Juicy Chicken has no stock of
+  its own — it uses 0.5 of Whole Juicy Chicken (10 whole chickens = 10 wholes or 20 halves).
+- Each menu item has a **portion**: how much stock one order uses (e.g. Half Juicy
+  Chicken = 0.5 Whole Juicy Chicken). Every sale deducts it, and the POS shows how many
+  orders are left and blocks items that are out of stock. Change portions in
+  **Manage Price → Edit Price → Portion per order**. Starting values are in
+  `backend/src/config/catalog.js`.
+- The backend applies database upgrades by itself on start (`src/config/ensureSchema.js`).
+- Only cash payments are recorded today; the "E-wallet" export filter returns no rows.
+
+## Security
+
+The API is hardened against common attacks (all verified with an automated
+penetration test):
+
+- **SQL injection** — every query uses parameterized values; `:id` params are
+  validated as integers.
+- **Passwords** — bcrypt hashed; 6–72 characters; default passwords must be changed.
+- **Login** — same error and timing for a wrong email as a wrong password
+  (no account enumeration); brute force is rate-limited per IP.
+- **Password reset** — forgot-password and verify-otp give one generic response,
+  so they can't be used to discover which emails are registered; codes are
+  single-use, expire in 10 minutes and lock after 5 wrong tries.
+- **JWT** — tampered, `alg:none`, and wrong-secret tokens are all rejected.
+  Set a long random `JWT_SECRET` (the server warns if it's short).
+- **Roles** — cashiers can't reach manager-only routes (staff, prices, reports,
+  restock, waste) or edit other users.
+- **Hardening** — security headers, no `X-Powered-By`, 100 kb body limit,
+  request flood limiter, and errors never leak server internals.
+
+Still your responsibility when deploying:
+
+- **Use HTTPS in production.** On a plain `http://` LAN, passwords and tokens
+  travel in clear text. Put the API behind HTTPS (e.g. a reverse proxy) for
+  anything beyond local testing.
+- Keep `backend/.env` out of git (already in `.gitignore`); rotate the Gmail
+  app password and `JWT_SECRET` if they were ever committed.
