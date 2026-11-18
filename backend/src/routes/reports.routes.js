@@ -138,6 +138,10 @@ async function findTransactions(query) {
     if (!from || !to) throw new HttpError(400, 'Start and end dates are required (MM/DD/YYYY).');
     conditions.push('DATE(o.Order_Date_Time) BETWEEN ? AND ?');
     params.push(from, to);
+  } else if (dateFilter !== undefined && dateFilter !== '') {
+    // Anything else (a typo, or a payload like "Today' OR '1'='1") is rejected,
+    // not silently treated as "no filter".
+    throw new HttpError(400, 'dateFilter must be Today, This Week, This Month or Custom.');
   }
 
   // Only cash payments are recorded today, so an E-wallet filter returns nothing.
@@ -168,4 +172,5 @@ module.exports = router;
 // TEST: sales-report rejects unknown period with 400
 // TEST: sales-report details list every active menu item; percents add up to 100 when anything sold
 // TEST: transactions Custom filter converts MM/DD/YYYY and filters inclusively
+// TEST: transactions?dateFilter=Today' OR '1'='1 (or any unknown value) -> 400, no rows returned
 // TEST: transactions/export -> 403 for a cashier token, 200 with rows for a manager token

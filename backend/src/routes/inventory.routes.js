@@ -147,7 +147,8 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
   const conditions = ['s.Is_Active = 1'];
   const params = [];
 
-  if (WASTE_DATE_FILTERS[dateFilter]) {
+  // Own keys only: a plain lookup would also match "constructor" or "toString".
+  if (typeof dateFilter === 'string' && Object.hasOwn(WASTE_DATE_FILTERS, dateFilter)) {
     conditions.push(WASTE_DATE_FILTERS[dateFilter]);
   } else if (dateFilter === 'Custom') {
     const from = slashDateToSql(startDate);
@@ -156,6 +157,8 @@ router.get('/waste-history', authorizeRoles('manager'), async (req, res) => {
     if (from > to) throw new HttpError(400, 'The start date must be on or before the end date.');
     conditions.push('DATE(w.Date) BETWEEN ? AND ?');
     params.push(from, to);
+  } else if (dateFilter !== undefined && dateFilter !== '') {
+    throw new HttpError(400, 'dateFilter must be Today, This Week, This Month or Custom.');
   }
 
   const [rows] = await pool.query(
@@ -179,5 +182,6 @@ module.exports = router;
 // TEST: restock items [A x5, B x3] -> one PO with 2 lines, both balances up; one bad item -> 404 and nothing added
 // TEST: stocks / restock / waste / waste-history ignore hidden stock (Is_Active = 0)
 // TEST: waste-history?dateFilter=Today -> only today's waste; Custom 11/01/2026-11/14/2026 -> inclusive range; Custom with a missing date -> 400
+// TEST: waste-history?dateFilter=constructor (or any unknown value) -> 400, not 500
 // TEST: waste with wasteDate 11/13/2026 -> Waste History shows 11/13/2026; a future wasteDate -> 400
 // TEST: waste larger than the balance -> 400 "Unknown stock item or waste exceeds balance"
