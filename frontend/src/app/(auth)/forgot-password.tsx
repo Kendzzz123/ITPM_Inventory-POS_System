@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { showAlert } from '@/utils/alert';
+import { emailError } from '@/utils/validation';
 import { api, API_ROUTES } from '@/config/apiConfig';
 
 
@@ -22,23 +23,29 @@ export default function ForgotPasswordScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSendCode = async () => {
-    if (!email.trim()) {
+    const value = email.trim();
+    // Guard clauses: stop here, without calling the server, if the email is missing
+    // or not a full address (e.g. "@gmail.com" with no name before the "@").
+    if (!value) {
       showAlert('Required', 'Please enter your email address');
+      return;
+    }
+    const invalid = emailError(value);
+    if (invalid) {
+      showAlert('Invalid Email', invalid);
       return;
     }
 
     setLoading(true);
     try {
-      await api.post(API_ROUTES.FORGOT_PASSWORD, {
-        email: email.trim(),
-      });
+      await api.post(API_ROUTES.FORGOT_PASSWORD, { email: value });
 
       showAlert('Success', 'A 6-digit code has been sent to your email.');
       
       // Move to OTP screen and pass the email
       router.push({
         pathname: '/otp',
-        params: { email: email.trim() },
+        params: { email: value },
       });
     } catch (error: any) {
       console.error('Send OTP Error:', error.response?.data || error.message);
@@ -110,6 +117,9 @@ export default function ForgotPasswordScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+// TEST: "" -> "Required"; "@gmail.com" -> "Invalid Email" (name before "@"), no request sent, stays on this screen
+// TEST: "juan@gmail" -> "Invalid Email"; "juan@gmail.com" -> request sent, then the OTP screen
 
 const styles = StyleSheet.create({
   backButton: {

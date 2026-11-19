@@ -68,6 +68,7 @@ export function emailError(email: string): string | null {
   const value = email.trim();
   if (!value) return null;
   if (/\s/.test(value)) return 'Email cannot contain spaces.';
+  if (value.startsWith('@')) return 'Please enter your name before the "@" (e.g. name@gmail.com).';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
     return 'Please enter a valid email address (e.g. name@gmail.com).';
   }
@@ -88,5 +89,5 @@ export function passwordError(password: string): string | null {
 
 // TEST: nameError('Juan Dela Cruz') === null; nameError('Jennifer 8. Lee') === null; nameError('Juan2') and nameError('12345') -> error
 // TEST: phoneError('09171234567') === null; phoneError('+639171234567') === null; phoneError('0917123456') -> 11 digits; phoneError('+63917123456') -> 13 characters
-// TEST: emailError('a@b.co') === null; emailError('a@b') -> invalid
+// TEST: emailError('a@b.co') === null; emailError('a@b') -> invalid; emailError('@gmail.com') -> name before "@"
 // TEST: passwordError('12345') -> at least 6; passwordError('x'.repeat(73)) -> at most 72

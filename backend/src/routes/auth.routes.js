@@ -18,6 +18,7 @@ const { sendOtpEmail } = require('../config/mailer');
 const { signToken, refreshSuspension, suspendedMessage } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const rateLimit = require('../middleware/rateLimit');
+const { isValidEmail } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -170,6 +171,14 @@ router.post('/login', loginLimiter, async (req, res) => {
 router.post('/forgot-password', otpRequestLimiter, async (req, res) => {
   const email = String(req.body?.email || '').trim();
   if (!email) throw new HttpError(400, 'Email is required.');
+  // Guard clause: no code for an address that isn't complete, e.g. "@gmail.com"
+  // (nothing before the "@"). Checking the format tells nothing about which accounts exist.
+  if (email.startsWith('@')) {
+    throw new HttpError(400, 'Please enter your name before the "@" (e.g. name@gmail.com).');
+  }
+  if (!isValidEmail(email)) {
+    throw new HttpError(400, 'Please enter a valid email address (e.g. name@gmail.com).');
+  }
 
   // Always reply the same way, whether or not the email is registered, so this
   // endpoint can't be used to find out which emails have accounts.
@@ -259,5 +268,6 @@ module.exports.assertPasswordLength = assertPasswordLength;
 // TEST: login -> 400 missing fields, 403 suspended, 200 with token
 // TEST: login unknown email -> 401 { field: 'email' }; wrong password -> 401 { field: 'password' }
 // TEST: login with a default password returns mustChangePassword = true
+// TEST: forgot-password with "@gmail.com" -> 400 "name before the @"; with "juan@gmail" -> 400 invalid; no OTP row created
 // TEST: verify-otp increments Attempts on wrong code and locks after 5
 // TEST: reset-password marks the OTP 'used' so it cannot be replayed
