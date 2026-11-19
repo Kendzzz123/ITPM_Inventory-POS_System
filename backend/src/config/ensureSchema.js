@@ -9,7 +9,7 @@
 'use strict';
 
 const pool = require('./db');
-const { MENU_ITEMS, STOCK_ITEMS, DEFAULT_PORTIONS } = require('./catalog');
+const { MENU_ITEMS, STOCK_ITEMS, DEFAULT_PORTIONS, WHOLE_UNITS } = require('./catalog');
 const { schemaStatement } = require('../utils/sqlFile');
 
 /** Adds a column only if it is missing. */
@@ -53,6 +53,96 @@ async function makeUserFkSetNull(table) {
     `ALTER TABLE \`${table}\` ADD CONSTRAINT \`${fk.name}\`
        FOREIGN KEY (User_ID) REFERENCES Users(User_ID) ON DELETE SET NULL`
   );
+}
+
+/**
+ * Changes one stock balance and records the change in the ledger as an
+ * Adjustment (the same two steps as sp_adjust_stock), inside the caller's transaction.
+ */
+async function adjustStock(conn, stockId, delta, note) {
+  await conn.query('UPDATE Stock_Items SET Current_Quantity = Current_Quantity + ? WHERE Stock_ID = ?', [
+    delta,
+    stockId,
+  ]);
+  await conn.query(
+    "INSERT INTO Stock_Movements (Stock_ID, Type, Quantity, User_ID, Note) VALUES (?, 'Adjustment', ?, NULL, ?)",
+    [stockId, delta, note]
+  );
+}
+
+/**
+ * Migration 007, part 1: Half Juicy Chicken gets its own stock (it used 0.5 of a
+ * Whole Juicy Chicken). The new stock starts at 0, except that a leftover half in
+ * the Whole Juicy Chicken stock (e.g. 8.5 after selling halves) becomes 1 Half.
+ */
+async function giveHalfChickenOwnStock(conn) {
+  const half = STOCK_ITEMS.find((s) => s.name === 'Half Juicy Chicken');
+  await conn.query(
+    'INSERT IGNORE INTO Stock_Items (Stock_Name, Unit, Current_Quantity, Minimum_Level) VALUES (?, ?, 0, ?)',
+    [half.name, half.unit, half.minLevel]
+  );
+  const [[halfStock]] = await conn.query('SELECT Stock_ID AS id FROM Stock_Items WHERE Stock_Name = ? FOR UPDATE', [
+    half.name,
+  ]);
+
+  // One order of Half Juicy Chicken now uses 1 Half Juicy Chicken.
+  await conn.query(
+    'DELETE r FROM Recipe_Portions r JOIN Menu_Items m ON m.Item_ID = r.Item_ID WHERE m.Item_Name = ?',
+    [half.name]
+  );
+  await conn.query(
+    'INSERT INTO Recipe_Portions (Item_ID, Stock_ID, Quantity_Used) SELECT Item_ID, ?, 1 FROM Menu_Items WHERE Item_Name = ?',
+    [halfStock.id, half.name]
+  );
+
+  const [[whole]] = await conn.query(
+    `SELECT Stock_ID AS id, Current_Quantity - FLOOR(Current_Quantity) AS fraction
+       FROM Stock_Items WHERE Stock_Name = 'Whole Juicy Chicken' FOR UPDATE`
+  );
+  const fraction = Number(whole?.fraction) || 0;
+  if (fraction > 0) {
+    await adjustStock(conn, whole.id, -fraction, 'Leftover half chicken moved to Half Juicy Chicken stock');
+    const halves = Math.floor(fraction * 2 + 1e-9);
+    if (halves > 0) {
+      await adjustStock(conn, halfStock.id, halves, 'Leftover half chicken from Whole Juicy Chicken stock');
+    }
+  }
+}
+
+/** Migration 007, part 2: Sarsa (Gravy) is counted in packs (it was liters), 1 pack per order. */
+async function countSarsaInPacks(conn) {
+  const sarsa = STOCK_ITEMS.find((s) => s.name === 'Sarsa (Gravy)');
+  const [[row]] = await conn.query('SELECT Stock_ID AS id, Unit AS unit FROM Stock_Items WHERE Stock_Name = ? FOR UPDATE', [
+    sarsa.name,
+  ]);
+  if (!row) return;
+  if (row.unit !== sarsa.unit) {
+    await conn.query('UPDATE Stock_Items SET Unit = ?, Minimum_Level = ? WHERE Stock_ID = ?', [
+      sarsa.unit,
+      sarsa.minLevel,
+      row.id,
+    ]);
+  }
+  await conn.query(
+    `UPDATE Recipe_Portions r JOIN Menu_Items m ON m.Item_ID = r.Item_ID
+        SET r.Quantity_Used = 1
+      WHERE m.Item_Name = ? AND r.Stock_ID = ?`,
+    [sarsa.name, row.id]
+  );
+}
+
+/** Migration 007, part 3: any stock counted in pieces or packs is rounded down to a whole number. */
+async function roundDownToWholeNumbers(conn) {
+  const [rows] = await conn.query(
+    `SELECT Stock_ID AS id, Current_Quantity - FLOOR(Current_Quantity) AS fraction
+       FROM Stock_Items
+      WHERE Unit IN (?) AND Current_Quantity <> FLOOR(Current_Quantity)
+      FOR UPDATE`,
+    [WHOLE_UNITS]
+  );
+  for (const r of rows) {
+    await adjustStock(conn, r.id, -Number(r.fraction), 'Rounded down: stock is counted in whole numbers');
+  }
 }
 
 /** Ordered list of one-time upgrades. Never edit or reorder old entries — add new ones. */
@@ -185,6 +275,26 @@ const MIGRATIONS = [
       await pool.query(createOrder);
     },
   },
+  {
+    id: '007_half_chicken_stock_and_whole_numbers',
+    description: 'Half Juicy Chicken has its own stock; Sarsa (Gravy) is counted in whole packs',
+    run: async () => {
+      // One transaction: every balance change is recorded in the ledger, or none is.
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        await giveHalfChickenOwnStock(conn);
+        await countSarsaInPacks(conn);
+        await roundDownToWholeNumbers(conn);
+        await conn.commit();
+      } catch (err) {
+        await conn.rollback().catch(() => {});
+        throw err;
+      } finally {
+        conn.release();
+      }
+    },
+  },
 ];
 
 /**
@@ -249,3 +359,8 @@ async function ensureSchema() {
 }
 
 module.exports = ensureSchema;
+
+// TEST: migration 007 on a database with Whole Juicy Chicken 8.5 -> Whole 8, Half Juicy Chicken stock 1,
+//       Half's portion = 1 of its own stock, and two Adjustment rows in Stock_Movements
+// TEST: migration 007 with Sarsa 4.9 L -> Sarsa 4 packs (minimum 10), portion 1, one Adjustment row of -0.9
+// TEST: migration 007 on a new database changes nothing (catalog already has the new values)

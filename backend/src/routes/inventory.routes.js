@@ -14,7 +14,7 @@ const pool = require('../config/db');
 const { authorizeRoles } = require('../middleware/auth');
 const { HttpError } = require('../middleware/errorHandler');
 const { positiveNumber, newRequestId, slashDateToSql, localDateSql } = require('../utils/helpers');
-const { menuOrder } = require('../config/catalog');
+const { menuOrder, WHOLE_UNITS } = require('../config/catalog');
 
 const router = express.Router();
 
@@ -22,22 +22,27 @@ const router = express.Router();
  * Resolves an active (visible) stock item from either stockId or itemName.
  * Hidden stock (Raw Chicken, Raw Pork, ...) can't be restocked or wasted.
  * Never creates items.
- * @returns {Promise<number>} Stock_ID
+ * @returns {Promise<{ id: number, name: string, unit: string }>}
  */
-async function resolveStockId(conn, { stockId, itemName }) {
+async function resolveStock(conn, { stockId, itemName }) {
+  const columns = 'SELECT Stock_ID AS id, Stock_Name AS name, Unit AS unit FROM Stock_Items';
   if (stockId) {
-    const [rows] = await conn.query('SELECT Stock_ID FROM Stock_Items WHERE Stock_ID = ? AND Is_Active = 1', [
-      stockId,
-    ]);
-    if (rows.length) return rows[0].Stock_ID;
+    const [rows] = await conn.query(`${columns} WHERE Stock_ID = ? AND Is_Active = 1`, [stockId]);
+    if (rows.length) return rows[0];
   } else if (itemName) {
-    const [rows] = await conn.query(
-      'SELECT Stock_ID FROM Stock_Items WHERE Stock_Name = ? AND Is_Active = 1 LIMIT 1',
-      [String(itemName).trim()]
-    );
-    if (rows.length) return rows[0].Stock_ID;
+    const [rows] = await conn.query(`${columns} WHERE Stock_Name = ? AND Is_Active = 1 LIMIT 1`, [
+      String(itemName).trim(),
+    ]);
+    if (rows.length) return rows[0];
   }
   throw new HttpError(404, 'Stock item not found.');
+}
+
+/** Pieces and packs are counted in whole numbers: 2 is fine, 1.5 is refused. */
+function assertWholeQuantity(stock, qty) {
+  if (WHOLE_UNITS.includes(stock.unit) && !Number.isInteger(qty)) {
+    throw new HttpError(400, `${stock.name} is counted in whole numbers. Please enter a whole quantity.`);
+  }
 }
 
 // GET /protected/stocks — visible stock only, in POS menu order
@@ -82,8 +87,9 @@ router.post('/restock', authorizeRoles('manager'), async (req, res) => {
     const lines = new Map(); // Stock_ID -> quantity
     for (const item of list) {
       const qty = positiveNumber(item?.quantity, 'Quantity');
-      const targetId = await resolveStockId(conn, { stockId: item?.stockId, itemName: item?.itemName });
-      lines.set(targetId, (lines.get(targetId) || 0) + qty);
+      const stock = await resolveStock(conn, { stockId: item?.stockId, itemName: item?.itemName });
+      assertWholeQuantity(stock, qty);
+      lines.set(stock.id, (lines.get(stock.id) || 0) + qty);
     }
 
     await conn.beginTransaction();
@@ -120,8 +126,9 @@ router.post('/waste', authorizeRoles('manager'), async (req, res) => {
   const day = slashDateToSql(wasteDate); // null when not given; 400 when malformed
   if (day && day > localDateSql()) throw new HttpError(400, 'Waste date cannot be in the future.');
 
-  const targetId = await resolveStockId(pool, { stockId, itemName });
-  const args = [req.user.id, newRequestId(clientRequestId), targetId, qty, cleanReason];
+  const stock = await resolveStock(pool, { stockId, itemName });
+  assertWholeQuantity(stock, qty);
+  const args = [req.user.id, newRequestId(clientRequestId), stock.id, qty, cleanReason];
   try {
     await pool.query('CALL sp_record_waste_on(?, ?, ?, ?, ?, ?, @waste_id)', [...args, day]);
   } catch (err) {
@@ -185,3 +192,4 @@ module.exports = router;
 // TEST: waste-history?dateFilter=constructor (or any unknown value) -> 400, not 500
 // TEST: waste with wasteDate 11/13/2026 -> Waste History shows 11/13/2026; a future wasteDate -> 400
 // TEST: waste larger than the balance -> 400 "Unknown stock item or waste exceeds balance"
+// TEST: restock or waste of 1.5 Sarsa (Gravy) (packs) -> 400 "... counted in whole numbers"; 2 -> OK

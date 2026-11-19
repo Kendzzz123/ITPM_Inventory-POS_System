@@ -2,7 +2,8 @@
  * @file ItemQuantityPicker.tsx
  * @description The "Choose Item" list used by Restock and Record Waste.
  * Tap a row (or its circle) to pick it; a picked row shows a quantity with
- * − / + buttons (you can also type, e.g. 1.5 for Sarsa) and a × to remove it.
+ * − / + buttons (you can also type a whole number) and a × to remove it.
+ * Stock is counted in whole pieces or packs, so fractions can't be entered.
  * Several items can be picked at once.
  */
 import React from 'react';
@@ -10,7 +11,7 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { Ionicons } from '@expo/vector-icons';
 import type { StockOption } from '@/hooks/useStockItems';
 
-/** Picked items: Stock_ID -> quantity as typed (text, so "1." can become "1.5"). */
+/** Picked items: Stock_ID -> quantity as typed (text, so the box can be empty while typing). */
 export type PickedQuantities = Record<number, string>;
 
 type Props = {
@@ -24,15 +25,15 @@ const RED = '#EC0000';
 const INK = '#0F1015';
 const GREY = '#9CA3AF';
 
-/** Quantity after a − or + tap; never below 0, no float tails (2.5 + 1 = 3.5). */
+/** Quantity after a − or + tap: a whole number, never below 0. */
 function stepQuantity(value: string, delta: number): string {
-  const next = Math.max(0, Math.round(((Number(value) || 0) + delta) * 1000) / 1000);
+  const next = Math.max(0, Math.floor(Number(value) || 0) + delta);
   return String(next);
 }
 
-/** Keeps digits and one decimal point. */
+/** Keeps digits only (no decimal point: stock is counted in whole numbers). */
 function cleanQuantity(text: string): string {
-  return text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+  return text.replace(/[^0-9]/g, '');
 }
 
 export default function ItemQuantityPicker({ items, picked, onChange, loading }: Props) {
@@ -91,7 +92,7 @@ export default function ItemQuantityPicker({ items, picked, onChange, loading }:
                     style={styles.qtyInput}
                     value={qty}
                     onChangeText={(t) => setQuantity(item.id, cleanQuantity(t))}
-                    keyboardType="decimal-pad"
+                    keyboardType="number-pad"
                     maxLength={8}
                     selectTextOnFocus
                     accessibilityLabel={`${item.name} quantity`}
@@ -214,4 +215,4 @@ const styles = StyleSheet.create({
 });
 
 // TEST: tapping a row picks it with quantity 1; × or tapping again removes it
-// TEST: − never goes below 0; + on "2.5" gives "3.5"; typing "1.2.3" keeps "1.23"
+// TEST: − never goes below 0; + on "2" gives "3"; typing "1.5" keeps "15" (digits only)

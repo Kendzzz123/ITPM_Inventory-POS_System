@@ -3,11 +3,12 @@
  * @description The Inventory list: one card per POS menu item, in menu order.
  * Used by the Inventory screen, the item detail page and Stock Alert.
  *
- * - An item with its own stock (Whole Juicy Chicken, Liempo, Atsara, ...) shows
- *   that stock's count, and is low when the stock is at or below its minimum.
- * - An item that uses another item's stock (Half Juicy Chicken uses 0.5 of a
- *   Whole) shows how many can still be sold from that stock, and is low when
- *   that stock is low. Restocking it means restocking the stock it uses.
+ * - An item with its own stock (every item on the current menu, including Half
+ *   Juicy Chicken) shows that stock's count, and is low when the stock is at or
+ *   below its minimum.
+ * - An item that uses another item's stock (none by default; a manager can set
+ *   one with Portion per order) shows how many can still be sold from that stock,
+ *   and is low when that stock is low. Restocking it means restocking that stock.
  */
 import { api, API_ROUTES } from '@/config/apiConfig';
 import type { ImageSourcePropType } from 'react-native';
@@ -26,7 +27,7 @@ export type InventoryCard = {
   stockId: number | null;
   /** Set when the item uses another item's stock: that stock's name. */
   usesStockOf: string | null;
-  /** How much of that stock one order uses (0.5 for Half Juicy Chicken). */
+  /** How much of that stock one order uses. */
   portion: number | null;
   image: ImageSourcePropType;
 };
@@ -79,7 +80,7 @@ export function buildInventory(stocks: StockLevel[], menu: MenuRow[] | null): In
 
 /**
  * Loads the Inventory cards. If the menu can't be loaded, falls back to the
- * stock list alone (the screen still works, without Half Juicy Chicken).
+ * stock list alone (the screen still works).
  * Throws if the stock list itself can't be loaded.
  */
 export async function fetchInventory(token: string): Promise<InventoryCard[]> {
@@ -99,5 +100,6 @@ export function remainingLabel(card: InventoryCard, format: (n: number) => strin
   return `${format(card.quantity)}${showUnit ? ` ${card.unit}` : ''} remaining`;
 }
 
-// TEST: buildInventory with Whole 10 (min 10) and Half using 0.5 -> Half card quantity 20, isLow true, stockId = Whole's id
+// TEST: buildInventory with Whole 10 and Half 6 (own stock) -> two cards with their own counts and stock ids
+// TEST: buildInventory with an item using 0.5 of another stock (10) -> that card's quantity 20, stockId = the other stock's id
 // TEST: buildInventory(stocks, null) returns one card per stock (menu failed)

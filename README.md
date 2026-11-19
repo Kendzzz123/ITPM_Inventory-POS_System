@@ -75,10 +75,11 @@ Keep the phone on the same Wi-Fi as the backend PC. For a hosted backend, set
 - Stock quantities start at 0 — use **Restock** to add stock before selling.
 - The stock items are the POS menu items (same names). Any other stock item (e.g. the
   old Raw Chicken / Raw Pork) is hidden from Stocks, Restock, Record Waste and Waste
-  History; its past records stay in the database. Half Juicy Chicken has no stock of
-  its own — it uses 0.5 of Whole Juicy Chicken (10 whole chickens = 10 wholes or 20 halves).
-- Each menu item has a **portion**: how much stock one order uses (e.g. Half Juicy
-  Chicken = 0.5 Whole Juicy Chicken). Every sale deducts it, and the POS shows how many
+  History; its past records stay in the database. Every menu item has its own stock,
+  counted in whole numbers: Half Juicy Chicken is counted separately from Whole Juicy
+  Chicken, and Sarsa (Gravy) is counted in packs (not liters).
+- Each menu item has a **portion**: how much stock one order uses (1 of its own stock
+  for every item on the menu). Every sale deducts it, and the POS shows how many
   orders are left and blocks items that are out of stock. Change portions in
   **Manage Price → Edit Price → Portion per order**. Starting values are in
   `backend/src/config/catalog.js`.

@@ -111,5 +111,5 @@ module.exports = router;
 
 // TEST: GET returns available = floor(stock / quantityUsed); null when no portion is set
 // TEST: PUT portion with quantityUsed 0 -> 400; unknown stockId -> 404; valid -> replaces old row
-// TEST: a sale of 2 Half Juicy Chicken deducts 1 Whole Juicy Chicken (2 x 0.5)
+// TEST: a sale of 2 Half Juicy Chicken deducts 2 Half Juicy Chicken stock (Whole Juicy Chicken unchanged)
 // TEST: PUT portion with a hidden stock (Is_Active = 0) -> 404

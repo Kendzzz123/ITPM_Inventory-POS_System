@@ -31,35 +31,40 @@ const MENU_ITEMS = [
  * Inventory tracked in Stocks / Restock / Record Waste. Stock items are the POS
  * menu items themselves (same names). A stock item whose name is not an active
  * menu item is hidden (Stock_Items.Is_Active = 0) — see migration 004.
- * Half Juicy Chicken has no stock of its own: it shares Whole Juicy Chicken.
+ * Every menu item has its own stock, counted in whole numbers (pieces or packs):
+ * Half Juicy Chicken is counted separately from Whole Juicy Chicken, and Sarsa
+ * (Gravy) is counted in packs, not liters (migration 007).
  */
 const STOCK_ITEMS = [
   { name: 'Whole Juicy Chicken', unit: 'pcs', minLevel: 10 },
+  { name: 'Half Juicy Chicken', unit: 'pcs', minLevel: 10 },
   { name: 'Liempo', unit: 'pcs', minLevel: 10 },
   { name: 'Regular Chorizo', unit: 'packs', minLevel: 10 },
   { name: 'Spicy Chorizo', unit: 'packs', minLevel: 10 },
   { name: 'Chorizo De Cebu (Regular)', unit: 'packs', minLevel: 10 },
   { name: 'Chorizo De Cebu (Spicy)', unit: 'packs', minLevel: 10 },
   { name: 'Atsara', unit: 'packs', minLevel: 10 },
-  { name: 'Sarsa (Gravy)', unit: 'L', minLevel: 2 },
+  { name: 'Sarsa (Gravy)', unit: 'packs', minLevel: 10 },
 ];
+
+/** Units counted in whole numbers: restock, waste and stock never use fractions of these. */
+const WHOLE_UNITS = ['pcs', 'packs'];
 
 /**
  * How much stock ONE order of a menu item uses. Applied when an item is first
  * added; changing a number here later does not update an item already in the database.
- * A half chicken is cut from a whole one, so Half Juicy Chicken uses 0.5 of the
- * Whole Juicy Chicken stock: 10 whole chickens in stock = 10 wholes or 20 halves.
+ * Each order uses 1 of the item's own stock, so stock always stays a whole number.
  */
 const DEFAULT_PORTIONS = [
   { item: 'Whole Juicy Chicken', stock: 'Whole Juicy Chicken', quantityUsed: 1 },
-  { item: 'Half Juicy Chicken', stock: 'Whole Juicy Chicken', quantityUsed: 0.5 },
+  { item: 'Half Juicy Chicken', stock: 'Half Juicy Chicken', quantityUsed: 1 },
   { item: 'Liempo', stock: 'Liempo', quantityUsed: 1 },
   { item: 'Regular Chorizo', stock: 'Regular Chorizo', quantityUsed: 1 },
   { item: 'Spicy Chorizo', stock: 'Spicy Chorizo', quantityUsed: 1 },
   { item: 'Chorizo De Cebu (Regular)', stock: 'Chorizo De Cebu (Regular)', quantityUsed: 1 },
   { item: 'Chorizo De Cebu (Spicy)', stock: 'Chorizo De Cebu (Spicy)', quantityUsed: 1 },
   { item: 'Atsara', stock: 'Atsara', quantityUsed: 1 },
-  { item: 'Sarsa (Gravy)', stock: 'Sarsa (Gravy)', quantityUsed: 0.05 },
+  { item: 'Sarsa (Gravy)', stock: 'Sarsa (Gravy)', quantityUsed: 1 },
 ];
 
 /**
@@ -73,6 +78,7 @@ function menuOrder(name) {
   return i === -1 ? MENU_ITEMS.length : i;
 }
 
-module.exports = { MENU_ITEMS, STOCK_ITEMS, DEFAULT_PORTIONS, menuOrder };
+module.exports = { MENU_ITEMS, STOCK_ITEMS, DEFAULT_PORTIONS, WHOLE_UNITS, menuOrder };
 
 // TEST: every DEFAULT_PORTIONS item and stock name exists in MENU_ITEMS / STOCK_ITEMS
+// TEST: every STOCK_ITEMS unit is in WHOLE_UNITS and every DEFAULT_PORTIONS quantityUsed is a whole number

@@ -4,7 +4,7 @@
  * screen (/stock-item?name=Whole Juicy Chicken). Shows the item large with how
  * many are left (red when low). Managers get a Restock button that opens
  * Restock with this item already picked. An item that uses another item's
- * stock (Half Juicy Chicken) restocks that stock.
+ * stock (set with Portion per order) restocks that stock.
  */
 import React, { useCallback, useState, useSyncExternalStore } from 'react';
 import {
@@ -254,4 +254,4 @@ const styles = StyleSheet.create({
 
 // TEST: /stock-item?name=Whole Juicy Chicken with 10 left (min 10) shows a red 10 and, for a manager, Restock
 // TEST: Restock opens /restock?stockId=<Whole's id> with that item picked; a cashier sees no Restock button
-// TEST: Half Juicy Chicken shows the note and its Restock picks Whole Juicy Chicken
+// TEST: Half Juicy Chicken shows its own count and no note; its Restock picks Half Juicy Chicken
