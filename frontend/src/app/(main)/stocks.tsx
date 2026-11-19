@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken, clearToken } from '@/services/authService';
 import { fetchInventory, type InventoryCard } from '@/services/inventory';
@@ -46,7 +47,8 @@ export default function StocksScreen() {
     });
   }, []);
 
-  const loadStocks = useCallback(async () => {
+  /** silent = automatic refresh: no error pop-up, the last counts stay on screen. */
+  const loadStocks = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
       const token = await getToken();
       if (!token) {
@@ -78,7 +80,9 @@ export default function StocksScreen() {
         router.replace('/');
         return;
       }
-      showAlert('Error', err.response?.data?.message || 'Could not load the inventory. Pull down to retry.');
+      if (!silent) {
+        showAlert('Error', err.response?.data?.message || 'Could not load the inventory. Pull down to retry.');
+      }
     } finally {
       setLoading(false);
     }
@@ -90,6 +94,9 @@ export default function StocksScreen() {
       loadStocks();
     }, [loadStocks])
   );
+
+  // While the list stays open, counts update every 15 seconds (restocks, waste, sales).
+  useAutoRefresh(() => loadStocks({ silent: true }));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

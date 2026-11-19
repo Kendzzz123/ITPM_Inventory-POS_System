@@ -2,10 +2,12 @@
  * @file useStockItems.ts
  * @description Loads the stock item list from the backend for the Restock and
  * Record Waste dropdowns (these used to be hard-coded menu names, which the
- * backend could not match to stock items).
+ * backend could not match to stock items). The list (and each item's count)
+ * refreshes every 15 seconds while the screen is open.
  */
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { api, API_ROUTES } from '@/config/apiConfig';
 import { getToken } from '@/services/authService';
 import { showAlert } from '@/utils/alert';
@@ -16,8 +18,9 @@ export function useStockItems() {
   const [stockItems, setStockItems] = useState<StockOption[]>([]);
   const [loadingStocks, setLoadingStocks] = useState(true);
 
-  const reload = useCallback(async () => {
-    setLoadingStocks(true);
+  /** silent = automatic refresh: no spinner (the list stays usable) and no error pop-up. */
+  const reload = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoadingStocks(true);
     try {
       const token = await getToken();
       const res = await api.get(API_ROUTES.STOCKS, {
@@ -25,9 +28,9 @@ export function useStockItems() {
       });
       setStockItems(res.data?.stocks || []);
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.message || 'Could not load stock items.');
+      if (!silent) showAlert('Error', err.response?.data?.message || 'Could not load stock items.');
     } finally {
-      setLoadingStocks(false);
+      if (!silent) setLoadingStocks(false);
     }
   }, []);
 
@@ -37,6 +40,9 @@ export function useStockItems() {
       reload();
     }, [reload])
   );
+
+  // Keep the counts current while Restock / Record Waste stays open.
+  useAutoRefresh(() => reload({ silent: true }));
 
   /** Names for the dropdown. */
   const stockNames = stockItems.map((s) => s.name);

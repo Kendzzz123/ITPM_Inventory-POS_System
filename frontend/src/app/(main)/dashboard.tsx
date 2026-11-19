@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
   useFonts,
   Poppins_400Regular,
@@ -96,8 +97,9 @@ export default function DashboardScreen() {
   // Drawer & Logout Confirmation State
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const load = useCallback(async () => {
-    setError(null);
+  /** silent = automatic refresh: a failed refresh keeps the dashboard as it is. */
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setError(null);
     try {
       const token = await getToken();
       if (!token) {
@@ -144,6 +146,7 @@ export default function DashboardScreen() {
           amount: Number(tx.amount).toLocaleString(),
         }))
       );
+      setError(null);
     } catch (err: any) {
       const status = err.response?.status;
       if (status === 401 || status === 403) {
@@ -151,7 +154,7 @@ export default function DashboardScreen() {
         router.replace('/');
         return;
       }
-      setError(err.response?.data?.message || 'Could not reach the server.');
+      if (!silent) setError(err.response?.data?.message || 'Could not reach the server.');
     } finally {
       setLoading(false);
     }
@@ -164,6 +167,10 @@ export default function DashboardScreen() {
       load();
     }, [load])
   );
+
+  // While the dashboard stays open, today's sales, recent transactions and the
+  // low-stock notice update every 15 seconds (e.g. after a cashier's sale).
+  useAutoRefresh(() => load({ silent: true }));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

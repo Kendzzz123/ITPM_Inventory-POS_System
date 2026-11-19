@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, type Href, useFocusEffect } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
   useFonts,
   Poppins_400Regular,
@@ -112,6 +113,10 @@ export default function CashierDashboardScreen() {
       loadData();
     }, [loadData])
   );
+
+  // While the Home Page stays open, the inventory preview updates every 15 seconds.
+  // A failed refresh keeps the last numbers on screen (no pop-up).
+  useAutoRefresh(loadData);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

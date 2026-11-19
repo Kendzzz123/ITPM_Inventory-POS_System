@@ -10,10 +10,12 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter, type Href, useFocusEffect } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
   useFonts,
   Poppins_400Regular,
@@ -74,6 +76,7 @@ export default function PosScreen() {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [role, setRole] = useState<'cashier' | 'manager'>(getUserRole());
 
@@ -133,10 +136,22 @@ export default function PosScreen() {
     }, [loadMenu])
   );
 
+  // While the POS stays open, the "left" badges update every 15 seconds, so a
+  // manager's restock or another cashier's sale shows up. The cart is not touched;
+  // once the menu is showing, a failed refresh keeps the last counts on screen.
+  useAutoRefresh(loadMenu);
+
+  // Pull down to refresh the counts right away.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadMenu();
+    setRefreshing(false);
+  }, [loadMenu]);
+
   /**
    * Orders of `item` that can still be added, after what is already in the cart.
-   * Items sharing a stock (Half Juicy Chicken uses 0.5 of Whole Juicy Chicken)
-   * count against the same stock. null = no portion set, so no limit.
+   * Items sharing a stock (set with Portion per order) count against the same
+   * stock. null = no portion set, so no limit.
    */
   const ordersLeft = (item: PosMenuItem, currentCart: CartItem[] = cart): number | null => {
     if (item.portions.length === 0) return null;
@@ -228,7 +243,13 @@ export default function PosScreen() {
     >
       <StatusBar barStyle="dark-content" />
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.red]} />
+        }
+      >
         <View style={styles.container}>
           {/* Top Bar */}
           <View style={styles.topBar}>

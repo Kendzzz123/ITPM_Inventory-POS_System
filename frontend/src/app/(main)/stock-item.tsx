@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import RoleSideDrawer from '@/components/RoleSideDrawer';
 import { getToken, clearToken } from '@/services/authService';
 import { fetchInventory, type InventoryCard } from '@/services/inventory';
@@ -49,7 +50,8 @@ export default function StockItemScreen() {
   const [loading, setLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const load = useCallback(async () => {
+  /** silent = automatic refresh: no error pop-up, the last count stays on screen. */
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
       const token = await getToken();
       if (!token) {
@@ -65,7 +67,7 @@ export default function StockItemScreen() {
         router.replace(ROUTES.LOGIN);
         return;
       }
-      showAlert('Error', err.response?.data?.message || 'Could not load this item.');
+      if (!silent) showAlert('Error', err.response?.data?.message || 'Could not load this item.');
     } finally {
       setLoading(false);
     }
@@ -77,6 +79,9 @@ export default function StockItemScreen() {
       load();
     }, [load])
   );
+
+  // While this item stays open, its count updates every 15 seconds.
+  useAutoRefresh(() => load({ silent: true }));
 
   const goRestock = () => {
     if (!card?.stockId) return;
